@@ -4,6 +4,7 @@ import ca.bazlur.threadcity.ai.IncidentExplanationService;
 import ca.bazlur.threadcity.application.ThreadDumpAnalysisService;
 import ca.bazlur.threadcity.application.JfrAnalysisService;
 import ca.bazlur.threadcity.application.IncidentBundleService;
+import ca.bazlur.threadcity.application.IncidentReportService;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.Finding;
 import ca.bazlur.threadcity.domain.JavaThread;
@@ -47,10 +48,13 @@ import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
 import com.vaadin.flow.server.streams.InMemoryUploadHandler;
+import com.vaadin.flow.server.streams.DownloadHandler;
+import com.vaadin.flow.server.streams.DownloadResponse;
 import com.vaadin.flow.server.streams.UploadMetadata;
 import com.vaadin.flow.shared.Registration;
 
 import java.util.ArrayList;
+import java.io.ByteArrayInputStream;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -71,6 +75,7 @@ public class MainView extends Div {
 
     private final ThreadDumpAnalysisService analysisService;
     private final IncidentBundleService bundleService;
+    private final IncidentReportService reportService;
     private final boolean aiAvailable;
     private final ThreadDumpUploadValidator uploadValidator = new ThreadDumpUploadValidator();
     private final AtomicLong replayGeneration = new AtomicLong();
@@ -107,6 +112,7 @@ public class MainView extends Div {
     private final Button clearButton = new Button("Clear analysis");
     private final Upload upload;
     private final Upload bundleUpload;
+    private final Anchor reportDownload;
     private final LockTrafficMap trafficMap;
     private final BlockerLeaderboard blockerLeaderboard;
     private final IncidentTimeMachine timeMachine;
@@ -127,9 +133,11 @@ public class MainView extends Div {
             IncidentExplanationService incidentExplanationService,
             ThreadDumpAnalysisService analysisService,
             JfrAnalysisService jfrAnalysisService,
-            IncidentBundleService bundleService) {
+            IncidentBundleService bundleService,
+            IncidentReportService reportService) {
         this.analysisService = analysisService;
         this.bundleService = bundleService;
+        this.reportService = reportService;
         aiAvailable = incidentExplanationService.isAvailable();
         evidencePanel = new ThreadEvidencePanel(
                 this::showSuccess, aiAvailable ? this::askAiAboutThread : null);
@@ -152,6 +160,7 @@ public class MainView extends Div {
                 this::navigateAiEvidence);
         upload = createUpload();
         bundleUpload = createBundleUpload();
+        reportDownload = createReportDownload();
 
         configureActions();
         addClassName("app-shell");
@@ -246,6 +255,24 @@ public class MainView extends Div {
         component.addClassName("bundle-upload");
         component.addFileRejectedListener(event -> showError("Choose one .threadcity bundle up to 48 MiB"));
         return component;
+    }
+
+    private Anchor createReportDownload() {
+        Anchor download = new Anchor(DownloadHandler.fromInputStream(event -> {
+            if (currentResult == null) {
+                return DownloadResponse.error(404, "Analyze an incident before exporting a dossier");
+            }
+            byte[] report = reportService.create(currentResult, jfrTimelinePanel.currentAnalysis());
+            return new DownloadResponse(
+                    new ByteArrayInputStream(report),
+                    "threadcity-incident-dossier.html",
+                    "text/html; charset=UTF-8",
+                    report.length);
+        }), "Download incident dossier");
+        download.setDownload(true);
+        download.setEnabled(false);
+        download.addClassName("report-download");
+        return download;
     }
 
     private void configureActions() {
@@ -572,7 +599,8 @@ public class MainView extends Div {
 
         Button copyButton = new Button("Copy incident summary", event -> copyIncidentSummary(result));
         copyButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-        HorizontalLayout actions = new HorizontalLayout(copyButton, copilotPanel.actionButton());
+        reportDownload.setEnabled(true);
+        HorizontalLayout actions = new HorizontalLayout(copyButton, reportDownload, copilotPanel.actionButton());
         actions.addClassName("status-actions");
         actions.setPadding(false);
         actions.setSpacing(false);
@@ -693,6 +721,7 @@ public class MainView extends Div {
     private void clearAnalysis() {
         cancelActiveReplays();
         currentResult = null;
+        reportDownload.setEnabled(false);
         copilotPanel.clear();
         evidencePanel.clear();
         synchronizerObservatory.clear();

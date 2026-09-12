@@ -1636,6 +1636,27 @@ body {
     width: 100%;
 }
 
+.report-download {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 0 0.75rem;
+    border-radius: var(--lumo-border-radius-m);
+    color: var(--tc-green);
+    font-size: var(--lumo-font-size-s);
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.report-download:hover {
+    background: rgba(86, 227, 159, 0.08);
+}
+
+.report-download[disabled] {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
 .jfr-timeline-panel > h2 {
     margin: 0;
 }
