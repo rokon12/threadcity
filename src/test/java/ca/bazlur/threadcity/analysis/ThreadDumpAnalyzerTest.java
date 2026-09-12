@@ -2,6 +2,7 @@ package ca.bazlur.threadcity.analysis;
 
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.Finding;
+import ca.bazlur.threadcity.domain.SynchronizerInsight;
 import ca.bazlur.threadcity.parser.HotSpotThreadDumpParser;
 import org.junit.jupiter.api.Test;
 
@@ -179,6 +180,49 @@ class ThreadDumpAnalyzerTest {
             assertThat(impact.transitivelyBlocked()).isEqualTo(1);
             assertThat(impact.maximumDepth()).isEqualTo(1);
         });
+    }
+
+    @Test
+    void crossReferencesSynchronizerOwnersWaitersRiskAndImpact() {
+        String dump = """
+                "root-owner" #1
+                   java.lang.Thread.State: RUNNABLE
+                    - locked <0x1> (a example.RootLock)
+                "acquisition-waiter" #2
+                   java.lang.Thread.State: BLOCKED
+                    - waiting to lock <0x1> (a example.RootLock)
+                "condition-waiter" #3
+                   java.lang.Thread.State: WAITING
+                    - waiting on <0x2> (a example.Condition)
+                "unresolved-waiter" #4
+                   java.lang.Thread.State: BLOCKED
+                    - waiting to lock <0x3> (a example.MissingOwner)
+                """;
+
+        AnalysisResult result = analyzer.analyze(parser.parse("synchronizers", dump));
+
+        assertThat(result.synchronizers()).hasSize(3);
+        assertThat(result.synchronizers().getFirst()).satisfies(insight -> {
+            assertThat(insight.lock().id()).isEqualTo("0x1");
+            assertThat(insight.risk()).isEqualTo(SynchronizerInsight.Risk.CONTENDED);
+            assertThat(insight.owners()).extracting(thread -> thread.name()).containsExactly("root-owner");
+            assertThat(insight.acquisitionWaiters())
+                    .extracting(thread -> thread.name()).containsExactly("acquisition-waiter");
+            assertThat(insight.downstreamImpact()).isEqualTo(1);
+        });
+        assertThat(result.synchronizers())
+                .filteredOn(insight -> insight.lock().id().equals("0x3"))
+                .singleElement()
+                .satisfies(insight -> assertThat(insight.risk())
+                        .isEqualTo(SynchronizerInsight.Risk.UNRESOLVED));
+        assertThat(result.synchronizers())
+                .filteredOn(insight -> insight.lock().id().equals("0x2"))
+                .singleElement()
+                .satisfies(insight -> {
+                    assertThat(insight.risk()).isEqualTo(SynchronizerInsight.Risk.NOTIFICATION);
+                    assertThat(insight.notificationWaiters())
+                            .extracting(thread -> thread.name()).containsExactly("condition-waiter");
+                });
     }
 
     private String sampleDump() throws IOException {

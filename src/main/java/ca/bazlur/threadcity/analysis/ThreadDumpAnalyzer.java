@@ -6,6 +6,7 @@ import ca.bazlur.threadcity.domain.DeadlockCycle;
 import ca.bazlur.threadcity.domain.Finding;
 import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.LockReference;
+import ca.bazlur.threadcity.domain.SynchronizerInsight;
 import ca.bazlur.threadcity.domain.StackCluster;
 import ca.bazlur.threadcity.domain.ThreadSnapshot;
 import ca.bazlur.threadcity.domain.ThreadState;
@@ -28,9 +29,49 @@ public final class ThreadDumpAnalyzer {
         List<WaitEdge> waitEdges = buildWaitEdges(snapshot);
         List<DeadlockCycle> deadlocks = findDeadlocks(snapshot.threads(), waitEdges);
         List<BlockingImpact> blockingImpacts = calculateBlockingImpacts(waitEdges);
+        List<SynchronizerInsight> synchronizers = analyzeSynchronizers(snapshot, deadlocks, blockingImpacts);
         List<StackCluster> stackClusters = findStackClusters(snapshot.threads());
         List<Finding> findings = createFindings(snapshot, deadlocks, stackClusters);
-        return new AnalysisResult(snapshot, waitEdges, deadlocks, blockingImpacts, stackClusters, findings);
+        return new AnalysisResult(
+                snapshot, waitEdges, deadlocks, blockingImpacts, synchronizers, stackClusters, findings);
+    }
+
+    private List<SynchronizerInsight> analyzeSynchronizers(
+            ThreadSnapshot snapshot,
+            List<DeadlockCycle> deadlocks,
+            List<BlockingImpact> impacts) {
+        Map<String, SynchronizerBuilder> synchronizers = new LinkedHashMap<>();
+        snapshot.threads().forEach(thread -> {
+            thread.ownedLocks().forEach(lock -> synchronizers
+                    .computeIfAbsent(lock.id(), ignored -> new SynchronizerBuilder(lock))
+                    .addOwner(thread));
+            if (thread.waitingOn() != null) {
+                SynchronizerBuilder builder = synchronizers.computeIfAbsent(
+                        thread.waitingOn().id(), ignored -> new SynchronizerBuilder(thread.waitingOn()));
+                if (thread.waitKind().canFormOwnershipEdge()) {
+                    builder.addAcquisitionWaiter(thread);
+                } else {
+                    builder.addNotificationWaiter(thread);
+                }
+            }
+        });
+
+        Set<String> deadlockedLocks = deadlocks.stream()
+                .flatMap(cycle -> cycle.edges().stream())
+                .map(edge -> edge.lock().id())
+                .collect(Collectors.toUnmodifiableSet());
+        Map<Integer, Integer> impactByOwner = impacts.stream().collect(Collectors.toMap(
+                impact -> impact.blocker().id(),
+                BlockingImpact::transitivelyBlocked));
+
+        return synchronizers.values().stream()
+                .map(builder -> builder.build(deadlockedLocks, impactByOwner))
+                .sorted(Comparator.comparingInt((SynchronizerInsight insight) -> insight.risk().severity())
+                        .reversed()
+                        .thenComparing(Comparator.comparingInt(SynchronizerInsight::waiterCount).reversed())
+                        .thenComparing(insight -> insight.lock().className())
+                        .thenComparing(insight -> insight.lock().id()))
+                .toList();
     }
 
     private List<BlockingImpact> calculateBlockingImpacts(List<WaitEdge> edges) {
@@ -197,5 +238,54 @@ public final class ThreadDumpAnalyzer {
     }
 
     private record ThreadAtDepth(JavaThread thread, int depth) {
+    }
+
+    private static final class SynchronizerBuilder {
+        private final LockReference lock;
+        private final Map<Integer, JavaThread> owners = new LinkedHashMap<>();
+        private final Map<Integer, JavaThread> acquisitionWaiters = new LinkedHashMap<>();
+        private final Map<Integer, JavaThread> notificationWaiters = new LinkedHashMap<>();
+
+        private SynchronizerBuilder(LockReference lock) {
+            this.lock = lock;
+        }
+
+        private void addOwner(JavaThread thread) {
+            owners.putIfAbsent(thread.id(), thread);
+        }
+
+        private void addAcquisitionWaiter(JavaThread thread) {
+            acquisitionWaiters.putIfAbsent(thread.id(), thread);
+        }
+
+        private void addNotificationWaiter(JavaThread thread) {
+            notificationWaiters.putIfAbsent(thread.id(), thread);
+        }
+
+        private SynchronizerInsight build(Set<String> deadlockedLocks, Map<Integer, Integer> impactByOwner) {
+            SynchronizerInsight.Risk risk;
+            if (deadlockedLocks.contains(lock.id())) {
+                risk = SynchronizerInsight.Risk.DEADLOCKED;
+            } else if (!acquisitionWaiters.isEmpty() && owners.size() == 1) {
+                risk = SynchronizerInsight.Risk.CONTENDED;
+            } else if (!acquisitionWaiters.isEmpty()) {
+                risk = SynchronizerInsight.Risk.UNRESOLVED;
+            } else if (!notificationWaiters.isEmpty()) {
+                risk = SynchronizerInsight.Risk.NOTIFICATION;
+            } else {
+                risk = SynchronizerInsight.Risk.HELD;
+            }
+            int downstreamImpact = owners.values().stream()
+                    .mapToInt(owner -> impactByOwner.getOrDefault(owner.id(), 0))
+                    .max()
+                    .orElse(0);
+            return new SynchronizerInsight(
+                    lock,
+                    List.copyOf(owners.values()),
+                    List.copyOf(acquisitionWaiters.values()),
+                    List.copyOf(notificationWaiters.values()),
+                    risk,
+                    downstreamImpact);
+        }
     }
 }

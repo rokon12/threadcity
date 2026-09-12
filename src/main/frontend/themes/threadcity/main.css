@@ -526,6 +526,123 @@ body {
     font-weight: 800;
 }
 
+.synchronizer-workbench {
+    width: 100%;
+    min-height: 610px;
+    margin-top: 1rem;
+    border: 1px solid var(--tc-line);
+    border-radius: 18px;
+    overflow: hidden;
+    background: rgba(17, 23, 34, 0.90);
+}
+
+.synchronizer-workbench .panel {
+    height: 100%;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+}
+
+.synchronizer-master > h2,
+.synchronizer-detail > h2 {
+    margin: 0;
+}
+
+.synchronizer-summary {
+    display: block;
+    margin: -0.6rem 0 0.9rem;
+    color: var(--tc-blue);
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.synchronizer-grid {
+    border: 1px solid var(--tc-line);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.sync-risk {
+    display: inline-block;
+    padding: 0.24rem 0.48rem;
+    border-radius: 6px;
+    color: var(--tc-muted);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 0.64rem;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.sync-risk-deadlocked { color: var(--tc-red); background: rgba(255, 93, 115, 0.14); }
+.sync-risk-contended { color: var(--tc-amber); background: rgba(255, 200, 87, 0.13); }
+.sync-risk-unresolved { color: #ff9f6e; background: rgba(255, 159, 110, 0.12); }
+.sync-risk-notification { color: var(--tc-blue); background: rgba(114, 167, 255, 0.12); }
+.sync-risk-held { color: var(--tc-green); background: rgba(86, 227, 159, 0.10); }
+
+.lock-class-name {
+    margin: 0.35rem 0 1rem;
+    overflow-wrap: anywhere;
+    color: var(--tc-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+}
+
+.synchronizer-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 1rem;
+}
+
+.synchronizer-metric {
+    padding: 0.75rem;
+    border: 1px solid var(--tc-line);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.synchronizer-metric span {
+    display: block;
+}
+
+.synchronizer-metric span:first-child {
+    color: var(--tc-ink);
+    font-size: 1.35rem;
+    font-weight: 900;
+}
+
+.synchronizer-metric span:last-child {
+    margin-top: 0.25rem;
+    color: var(--tc-muted);
+    font-size: 0.62rem;
+    text-transform: uppercase;
+}
+
+.synchronizer-people {
+    padding: 0.25rem 0.4rem 0.55rem;
+}
+
+.synchronizer-person {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.7rem;
+}
+
+.synchronizer-person span {
+    color: var(--tc-muted);
+    font-size: 0.66rem;
+    font-weight: 800;
+}
+
+.synchronizer-actions {
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
 .traffic-header {
     align-items: center;
 }

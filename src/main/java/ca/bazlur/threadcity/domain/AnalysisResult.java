@@ -9,6 +9,7 @@ public record AnalysisResult(
         List<WaitEdge> waitEdges,
         List<DeadlockCycle> deadlocks,
         List<BlockingImpact> blockingImpacts,
+        List<SynchronizerInsight> synchronizers,
         List<StackCluster> stackClusters,
         List<Finding> findings) {
 
@@ -16,6 +17,7 @@ public record AnalysisResult(
         waitEdges = List.copyOf(waitEdges);
         deadlocks = List.copyOf(deadlocks);
         blockingImpacts = List.copyOf(blockingImpacts);
+        synchronizers = List.copyOf(synchronizers);
         stackClusters = List.copyOf(stackClusters);
         findings = List.copyOf(findings);
     }
