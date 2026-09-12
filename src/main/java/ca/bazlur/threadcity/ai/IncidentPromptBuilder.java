@@ -123,6 +123,10 @@ final class IncidentPromptBuilder {
                     : thread.waitKind() + " on " + safe(thread.waitingOn().shortId());
             append(prompt, "- " + safe(thread.name())
                     + " | state=" + thread.state()
+                    + " | kind=" + thread.metadata().kind()
+                    + " | daemon=" + thread.metadata().daemon()
+                    + " | cpu=" + thread.metadata().cpuDisplay()
+                    + " | elapsed=" + thread.metadata().elapsedDisplay()
                     + " | wait=" + wait
                     + " | owns=" + thread.ownedLocks().size()
                     + " | top-frame=" + safe(thread.topFrame()), MAX_INCIDENT_CONTEXT_CHARS);

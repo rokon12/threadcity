@@ -3,6 +3,7 @@ package ca.bazlur.threadcity.ui.component;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.ThreadState;
+import ca.bazlur.threadcity.domain.ThreadMetadata;
 import ca.bazlur.threadcity.ui.support.IncidentNarrative;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -43,9 +44,11 @@ public final class ThreadEvidencePanel extends Div {
     private final Pre stackTrace = new Pre("Select a thread to inspect its stack.");
     private final TextField search = new TextField("Search threads or frames");
     private final ComboBox<ThreadState> stateFilter = new ComboBox<>("State");
+    private final ComboBox<ThreadMetadata.ThreadKind> kindFilter = new ComboBox<>("Kind");
     private final Checkbox deadlockOnly = new Checkbox("Confirmed deadlock only");
     private final Span filterSummary = new Span("No snapshot loaded");
     private final Button askSelectedThread = new Button("✦ Ask AI about thread");
+    private final Div threadTelemetry = new Div();
 
     private AnalysisResult result;
     private Set<Integer> deadlockedThreadIds = Set.of();
@@ -70,6 +73,7 @@ public final class ThreadEvidencePanel extends Div {
         grid.deselectAll();
         workbench.setDetail(null);
         stackTrace.setText("Select a thread to inspect its stack.");
+        threadTelemetry.removeAll();
     }
 
     public void clear() {
@@ -80,6 +84,7 @@ public final class ThreadEvidencePanel extends Div {
         grid.deselectAll();
         grid.setItems(List.of());
         stackTrace.setText("Select a thread to inspect its stack.");
+        threadTelemetry.removeAll();
         workbench.setDetail(null);
         filterSummary.setText("No snapshot loaded");
     }
@@ -131,6 +136,11 @@ public final class ThreadEvidencePanel extends Div {
         stateFilter.setClearButtonVisible(true);
         stateFilter.setPlaceholder("All states");
         stateFilter.addValueChangeListener(event -> filterChanged());
+        kindFilter.setItems(ThreadMetadata.ThreadKind.values());
+        kindFilter.setItemLabelGenerator(ThreadMetadata.ThreadKind::label);
+        kindFilter.setClearButtonVisible(true);
+        kindFilter.setPlaceholder("All kinds");
+        kindFilter.addValueChangeListener(event -> filterChanged());
         deadlockOnly.addValueChangeListener(event -> filterChanged());
     }
 
@@ -146,6 +156,12 @@ public final class ThreadEvidencePanel extends Div {
         grid.addThemeVariants(GridVariant.LUMO_NO_BORDER, GridVariant.LUMO_ROW_STRIPES);
         grid.addColumn(JavaThread::name).setHeader("Thread").setFlexGrow(2).setSortable(true);
         grid.addColumn(thread -> thread.state().name()).setHeader("State").setAutoWidth(true).setSortable(true);
+        grid.addColumn(thread -> thread.metadata().kind().label())
+                .setHeader("Kind").setAutoWidth(true).setSortable(true);
+        grid.addColumn(thread -> thread.metadata().cpuDisplay())
+                .setHeader("CPU").setAutoWidth(true).setSortable(true);
+        grid.addColumn(thread -> thread.metadata().elapsedDisplay())
+                .setHeader("Elapsed").setAutoWidth(true).setSortable(true);
         grid.addColumn(thread -> thread.waitingOn() == null ? "—" : thread.waitingOn().shortId())
                 .setHeader("Waiting for").setAutoWidth(true);
         grid.addColumn(thread -> thread.ownedLocks().size()).setHeader("Owns").setAutoWidth(true);
@@ -157,6 +173,7 @@ public final class ThreadEvidencePanel extends Div {
                     ? "Select a thread to inspect its stack."
                     : IncidentNarrative.threadDetails(selected));
             if (selected != null) {
+                renderTelemetry(selected);
                 workbench.setDetail(stackPanel);
                 workbench.getElement().callJsFunction("scrollIntoView", true);
             }
@@ -169,13 +186,20 @@ public final class ThreadEvidencePanel extends Div {
             getElement().executeJs("navigator.clipboard.writeText($0)", thread.name());
             successNotifier.accept("Thread name copied");
         }));
+        contextMenu.addItem("Copy JVM identity", event -> event.getItem().ifPresent(thread -> {
+            String identity = thread.name() + " · tid=" + value(thread.metadata().tid())
+                    + " · nid=" + value(thread.metadata().nid())
+                    + " · Java #=" + value(thread.metadata().javaThreadNumber());
+            getElement().executeJs("navigator.clipboard.writeText($0)", identity);
+            successNotifier.accept("JVM thread identity copied");
+        }));
         if (askAi != null) {
             contextMenu.addItem("✦ Ask AI about this thread", event -> event.getItem().ifPresent(askAi));
         }
     }
 
     private void buildLayout() {
-        HorizontalLayout filterBar = new HorizontalLayout(search, stateFilter, deadlockOnly);
+        HorizontalLayout filterBar = new HorizontalLayout(search, stateFilter, kindFilter, deadlockOnly);
         filterBar.addClassName("filter-bar");
         filterBar.setAlignItems(HorizontalLayout.Alignment.END);
         filterBar.setWidthFull();
@@ -215,7 +239,8 @@ public final class ThreadEvidencePanel extends Div {
         stackHeader.addClassName("stack-header");
         stackHeader.setWidthFull();
         stackHeader.expand(stackHeader.getComponentAt(0));
-        stackPanel.add(stackHeader, stackTrace);
+        threadTelemetry.addClassName("thread-telemetry");
+        stackPanel.add(stackHeader, threadTelemetry, stackTrace);
 
         workbench.addClassName("thread-workbench");
         workbench.setMaster(gridPanel);
@@ -244,6 +269,7 @@ public final class ThreadEvidencePanel extends Div {
         try {
             search.clear();
             stateFilter.clear();
+            kindFilter.clear();
             deadlockOnly.setValue(false);
         } finally {
             updatingFilters = false;
@@ -261,8 +287,11 @@ public final class ThreadEvidencePanel extends Div {
                 .filter(thread -> focusedThreadIds.isEmpty() || focusedThreadIds.contains(thread.id()))
                 .filter(thread -> !deadlockOnly.getValue() || deadlockedThreadIds.contains(thread.id()))
                 .filter(thread -> stateFilter.getValue() == null || thread.state() == stateFilter.getValue())
+                .filter(thread -> kindFilter.getValue() == null
+                        || thread.metadata().kind() == kindFilter.getValue())
                 .filter(thread -> query.isEmpty()
                         || thread.name().toLowerCase(Locale.ROOT).contains(query)
+                        || thread.metadata().searchText().contains(query)
                         || thread.stackFrames().stream()
                                 .anyMatch(frame -> frame.toLowerCase(Locale.ROOT).contains(query)))
                 .sorted(Comparator.comparingInt(JavaThread::id))
@@ -280,7 +309,32 @@ public final class ThreadEvidencePanel extends Div {
         grid.select(thread);
         grid.scrollToItem(thread);
         stackTrace.setText(IncidentNarrative.threadDetails(thread));
+        renderTelemetry(thread);
         workbench.setDetail(stackPanel);
         workbench.getElement().callJsFunction("scrollIntoView", true);
+    }
+
+    private void renderTelemetry(JavaThread thread) {
+        ThreadMetadata metadata = thread.metadata();
+        threadTelemetry.removeAll();
+        threadTelemetry.add(
+                telemetry("Kind", metadata.kind().label()),
+                telemetry("Java #", value(metadata.javaThreadNumber())),
+                telemetry("tid", value(metadata.tid())),
+                telemetry("nid", value(metadata.nid())),
+                telemetry("CPU", metadata.cpuDisplay()),
+                telemetry("Elapsed", metadata.elapsedDisplay()),
+                telemetry("Priority", value(metadata.priority())),
+                telemetry("Daemon", metadata.daemon() ? "Yes" : "No"));
+    }
+
+    private Div telemetry(String label, String value) {
+        Div item = new Div(new Span(value), new Span(label));
+        item.addClassName("thread-telemetry-item");
+        return item;
+    }
+
+    private String value(Object value) {
+        return value == null ? "—" : value.toString();
     }
 }

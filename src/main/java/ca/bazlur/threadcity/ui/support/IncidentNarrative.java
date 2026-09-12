@@ -24,6 +24,17 @@ public final class IncidentNarrative {
         StringBuilder text = new StringBuilder();
         text.append('"').append(thread.name()).append('"').append(System.lineSeparator());
         text.append("State: ").append(thread.state()).append(System.lineSeparator());
+        text.append("Kind: ").append(thread.metadata().kind().label())
+                .append(thread.metadata().daemon() ? " · daemon" : " · non-daemon")
+                .append(System.lineSeparator());
+        appendMetadata(text, "Java thread #", thread.metadata().javaThreadNumber());
+        appendMetadata(text, "Java ID", thread.metadata().tid());
+        appendMetadata(text, "Native ID", thread.metadata().nid());
+        appendMetadata(text, "Priority", thread.metadata().priority());
+        appendMetadata(text, "OS priority", thread.metadata().osPriority());
+        appendMetadata(text, "CPU", thread.metadata().cpuDisplay(), "—");
+        appendMetadata(text, "Elapsed", thread.metadata().elapsedDisplay(), "—");
+        appendMetadata(text, "Group", thread.metadata().group());
         if (thread.waitingOn() != null) {
             text.append("Wait: ").append(thread.waitKind().description()).append(System.lineSeparator());
             text.append("Target: ").append(thread.waitingOn().id())
@@ -39,5 +50,15 @@ public final class IncidentNarrative {
         text.append(System.lineSeparator());
         thread.stackFrames().forEach(frame -> text.append("  ").append(frame).append(System.lineSeparator()));
         return text.toString();
+    }
+
+    private static void appendMetadata(StringBuilder text, String label, Object value) {
+        appendMetadata(text, label, value, null);
+    }
+
+    private static void appendMetadata(StringBuilder text, String label, Object value, Object omittedValue) {
+        if (value != null && !value.equals(omittedValue)) {
+            text.append(label).append(": ").append(value).append(System.lineSeparator());
+        }
     }
 }

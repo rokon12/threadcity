@@ -11,7 +11,8 @@ public record JavaThread(
         List<String> stackFrames,
         List<LockReference> ownedLocks,
         LockReference waitingOn,
-        LockWaitKind waitKind) {
+        LockWaitKind waitKind,
+        ThreadMetadata metadata) {
 
     public JavaThread {
         Objects.requireNonNull(name, "name");
@@ -20,6 +21,7 @@ public record JavaThread(
         stackFrames = List.copyOf(stackFrames);
         ownedLocks = List.copyOf(ownedLocks);
         waitKind = waitKind == null ? LockWaitKind.UNKNOWN : waitKind;
+        metadata = Objects.requireNonNullElseGet(metadata, ThreadMetadata::empty);
     }
 
     public String topFrame() {

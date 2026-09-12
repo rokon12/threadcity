@@ -4,6 +4,7 @@ import ca.bazlur.threadcity.domain.LockWaitKind;
 import ca.bazlur.threadcity.domain.ParserDiagnostics;
 import ca.bazlur.threadcity.domain.ThreadSnapshot;
 import ca.bazlur.threadcity.domain.ThreadState;
+import ca.bazlur.threadcity.domain.ThreadMetadata;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -28,6 +29,17 @@ class HotSpotThreadDumpParserTest {
         assertThat(snapshot.threads().getFirst().ownedLocks())
                 .extracting(lock -> lock.id())
                 .containsExactly("0x000000061a77b180");
+        assertThat(snapshot.threads().getFirst().metadata()).satisfies(metadata -> {
+            assertThat(metadata.javaThreadNumber()).isEqualTo(37);
+            assertThat(metadata.priority()).isEqualTo(5);
+            assertThat(metadata.osPriority()).isEqualTo(31);
+            assertThat(metadata.cpuMillis()).isEqualTo(18.42);
+            assertThat(metadata.elapsedSeconds()).isEqualTo(4.11);
+            assertThat(metadata.tid()).isEqualTo("0x0000000121");
+            assertThat(metadata.nid()).isEqualTo("0x9103");
+            assertThat(metadata.daemon()).isFalse();
+            assertThat(metadata.kind()).isEqualTo(ThreadMetadata.ThreadKind.PLATFORM);
+        });
         assertThat(snapshot.parserDiagnostics().confidence()).isEqualTo(ParserDiagnostics.Confidence.HIGH);
         assertThat(snapshot.parserDiagnostics().coveragePercent()).isEqualTo(100);
     }
@@ -171,6 +183,30 @@ class HotSpotThreadDumpParserTest {
             assertThat(diagnostics.ignoredLineSamples().getFirst().occurrences()).isEqualTo(2);
             assertThat(diagnostics.omittedIgnoredLines()).isEqualTo(6);
             assertThat(diagnostics.confidence()).isEqualTo(ParserDiagnostics.Confidence.LOW);
+        });
+    }
+
+    @Test
+    void parsesVirtualThreadAndNormalizesDurationUnitsAndGroup() {
+        String dump = """
+                "virtual-request-9" #109 daemon virtual prio=7 os_prio=-1 cpu=1.50s elapsed=250ms group="requests"
+                   java.lang.Thread.State: RUNNABLE
+                    at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
+                """;
+
+        ThreadSnapshot snapshot = parser.parse("virtual", dump);
+
+        assertThat(snapshot.threads().getFirst().metadata()).satisfies(metadata -> {
+            assertThat(metadata.javaThreadNumber()).isEqualTo(109);
+            assertThat(metadata.priority()).isEqualTo(7);
+            assertThat(metadata.osPriority()).isEqualTo(-1);
+            assertThat(metadata.cpuMillis()).isEqualTo(1_500.0);
+            assertThat(metadata.elapsedSeconds()).isEqualTo(0.25);
+            assertThat(metadata.daemon()).isTrue();
+            assertThat(metadata.kind()).isEqualTo(ThreadMetadata.ThreadKind.VIRTUAL);
+            assertThat(metadata.group()).isEqualTo("requests");
+            assertThat(metadata.tid()).isNull();
+            assertThat(metadata.nid()).isNull();
         });
     }
 

@@ -1570,6 +1570,43 @@ body {
     white-space: pre-wrap;
 }
 
+.thread-telemetry {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.9rem;
+}
+
+.thread-telemetry-item {
+    min-width: 0;
+    padding: 0.65rem;
+    border: 1px solid var(--tc-line);
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.thread-telemetry-item span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.thread-telemetry-item span:first-child {
+    color: #dce5f0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.thread-telemetry-item span:last-child {
+    margin-top: 0.25rem;
+    color: var(--tc-muted);
+    font-size: 0.58rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
 @media (max-width: 900px) {
     .app-shell { padding: 0 1.2rem 3rem; }
     .privacy-note { display: none; }
@@ -1596,6 +1633,7 @@ body {
     .cohort-filter-bar { align-items: stretch; flex-direction: column; }
     .cohort-filter-bar > * { width: 100%; }
     .parser-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .thread-telemetry { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 600px) {
