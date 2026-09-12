@@ -2,6 +2,7 @@ package ca.bazlur.threadcity.ui;
 
 import ca.bazlur.threadcity.ai.IncidentExplanationService;
 import ca.bazlur.threadcity.application.ThreadDumpAnalysisService;
+import ca.bazlur.threadcity.application.JfrAnalysisService;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.Finding;
 import ca.bazlur.threadcity.domain.JavaThread;
@@ -15,6 +16,7 @@ import ca.bazlur.threadcity.ui.component.IncidentTimeMachine;
 import ca.bazlur.threadcity.ui.component.LockTrafficMap;
 import ca.bazlur.threadcity.ui.component.MultiDumpComparisonPanel;
 import ca.bazlur.threadcity.ui.component.ParserConfidencePanel;
+import ca.bazlur.threadcity.ui.component.JfrTimelinePanel;
 import ca.bazlur.threadcity.ui.component.SynchronizerObservatory;
 import ca.bazlur.threadcity.ui.component.StackCohortExplorer;
 import ca.bazlur.threadcity.ui.component.ThreadEvidencePanel;
@@ -82,6 +84,7 @@ public class MainView extends Div {
     private final Div threadsPage = new Div();
     private final Div synchronizersPage = new Div();
     private final Div cohortsPage = new Div();
+    private final Div jfrPage = new Div();
     private final Div comparePage = new Div();
     private final Div copilotPage = new Div();
     private final Tabs workbenchTabs = new Tabs();
@@ -90,6 +93,7 @@ public class MainView extends Div {
     private final Tab threadsTab = tab(VaadinIcon.TABLE, "Threads & evidence");
     private final Tab synchronizersTab = tab(VaadinIcon.LOCK, "Synchronizers");
     private final Tab cohortsTab = tab(VaadinIcon.CLUSTER, "Stack cohorts");
+    private final Tab jfrTab = tab(VaadinIcon.CLOCK, "JFR timeline");
     private final Tab compareTab = tab(VaadinIcon.SPLIT, "Compare fix");
     private final Tab copilotTab = tab(VaadinIcon.CHAT, "AI copilot");
     private final Map<Tab, Component> workbenchPages = new LinkedHashMap<>();
@@ -105,6 +109,7 @@ public class MainView extends Div {
     private final SynchronizerObservatory synchronizerObservatory;
     private final StackCohortExplorer stackCohortExplorer;
     private final ParserConfidencePanel parserConfidencePanel;
+    private final JfrTimelinePanel jfrTimelinePanel;
     private final IncidentComparisonPanel comparisonPanel;
     private final MultiDumpComparisonPanel multiDumpComparisonPanel;
     private final AiCopilotPanel copilotPanel;
@@ -114,7 +119,8 @@ public class MainView extends Div {
 
     public MainView(
             IncidentExplanationService incidentExplanationService,
-            ThreadDumpAnalysisService analysisService) {
+            ThreadDumpAnalysisService analysisService,
+            JfrAnalysisService jfrAnalysisService) {
         this.analysisService = analysisService;
         aiAvailable = incidentExplanationService.isAvailable();
         evidencePanel = new ThreadEvidencePanel(
@@ -125,6 +131,8 @@ public class MainView extends Div {
         synchronizerObservatory = new SynchronizerObservatory(this::inspectThread, this::inspectLock);
         stackCohortExplorer = new StackCohortExplorer(this::inspectThread);
         parserConfidencePanel = new ParserConfidencePanel(this::showSuccess);
+        jfrTimelinePanel = new JfrTimelinePanel(
+                jfrAnalysisService, this::inspectThread, this::showSuccess, this::showError);
         timeMachine = new IncidentTimeMachine(analysisService, this::inspectThread);
         comparisonPanel = new IncidentComparisonPanel(analysisService);
         multiDumpComparisonPanel = new MultiDumpComparisonPanel(analysisService, this::showSuccess, this::showError);
@@ -264,13 +272,22 @@ public class MainView extends Div {
         threadsPage.add(evidencePanel, parserConfidencePanel);
         synchronizersPage.add(synchronizerObservatory);
         cohortsPage.add(stackCohortExplorer);
+        jfrPage.add(jfrTimelinePanel);
         comparePage.add(multiDumpComparisonPanel, comparisonPanel);
         copilotPage.add(copilotPanel);
         configureWorkbenchTabs();
 
         HorizontalLayout footerActions = new HorizontalLayout(clearButton);
         footerActions.addClassName("analysis-actions");
-        Div pages = new Div(overviewPage, timelinePage, threadsPage, comparePage, copilotPage);
+        Div pages = new Div(
+                overviewPage,
+                timelinePage,
+                threadsPage,
+                synchronizersPage,
+                cohortsPage,
+                jfrPage,
+                comparePage,
+                copilotPage);
         pages.addClassName("workbench-pages");
         analysisSection.add(incidentStatus, workbenchTabs, pages, footerActions);
         return analysisSection;
@@ -278,7 +295,7 @@ public class MainView extends Div {
 
     private void configureWorkbenchTabs() {
         workbenchTabs.add(
-                overviewTab, timelineTab, threadsTab, synchronizersTab, cohortsTab, compareTab, copilotTab);
+                overviewTab, timelineTab, threadsTab, synchronizersTab, cohortsTab, jfrTab, compareTab, copilotTab);
         workbenchTabs.addThemeVariants(TabsVariant.LUMO_EQUAL_WIDTH_TABS);
         workbenchTabs.addClassName("workbench-tabs");
         workbenchTabs.setWidthFull();
@@ -288,6 +305,7 @@ public class MainView extends Div {
         workbenchPages.put(threadsTab, threadsPage);
         workbenchPages.put(synchronizersTab, synchronizersPage);
         workbenchPages.put(cohortsTab, cohortsPage);
+        workbenchPages.put(jfrTab, jfrPage);
         workbenchPages.put(compareTab, comparePage);
         workbenchPages.put(copilotTab, copilotPage);
         workbenchPages.values().forEach(page -> {
@@ -446,6 +464,7 @@ public class MainView extends Div {
         synchronizerObservatory.render(result);
         stackCohortExplorer.render(result);
         parserConfidencePanel.render(result);
+        jfrTimelinePanel.showResult(result);
         renderStatus(result);
         renderMetrics(result);
         trafficMap.render(result);
@@ -597,6 +616,7 @@ public class MainView extends Div {
         synchronizerObservatory.clear();
         stackCohortExplorer.clear();
         parserConfidencePanel.clear();
+        jfrTimelinePanel.clear();
         multiDumpComparisonPanel.clear();
         replayTimeline.setVisible(false);
         upload.clearFileList();
