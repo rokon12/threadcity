@@ -1,6 +1,7 @@
 package ca.bazlur.threadcity.parser;
 
 import ca.bazlur.threadcity.domain.LockWaitKind;
+import ca.bazlur.threadcity.domain.ParserDiagnostics;
 import ca.bazlur.threadcity.domain.ThreadSnapshot;
 import ca.bazlur.threadcity.domain.ThreadState;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,8 @@ class HotSpotThreadDumpParserTest {
         assertThat(snapshot.threads().getFirst().ownedLocks())
                 .extracting(lock -> lock.id())
                 .containsExactly("0x000000061a77b180");
+        assertThat(snapshot.parserDiagnostics().confidence()).isEqualTo(ParserDiagnostics.Confidence.HIGH);
+        assertThat(snapshot.parserDiagnostics().coveragePercent()).isEqualTo(100);
     }
 
     @Test
@@ -141,6 +144,34 @@ class HotSpotThreadDumpParserTest {
         assertThat(snapshot.threads()).extracting(thread -> thread.id()).containsExactly(0, 1);
         assertThat(snapshot.threads()).extracting(thread -> thread.name()).containsExactly("worker", "worker");
         assertThat(snapshot.threads().get(1).state()).isEqualTo(ThreadState.UNKNOWN);
+    }
+
+    @Test
+    void reportsBoundedIgnoredInputAndCoverage() {
+        StringBuilder dump = new StringBuilder("""
+                2026-09-12 10:15:30
+                Full thread dump OpenJDK 64-Bit Server VM:
+                "worker" #1
+                   java.lang.Thread.State: RUNNABLE
+                    at example.Worker.run(Worker.java:1)
+                diagnostic extension one
+                diagnostic extension one
+                """);
+        for (int index = 0; index < 55; index++) {
+            dump.append("unknown-line-").append(index).append('\n');
+        }
+
+        ThreadSnapshot snapshot = parser.parse("diagnostics", dump.toString());
+
+        assertThat(snapshot.parserDiagnostics()).satisfies(diagnostics -> {
+            assertThat(diagnostics.contentLines()).isEqualTo(62);
+            assertThat(diagnostics.recognizedLines()).isEqualTo(5);
+            assertThat(diagnostics.ignoredLines()).isEqualTo(57);
+            assertThat(diagnostics.ignoredLineSamples()).hasSize(50);
+            assertThat(diagnostics.ignoredLineSamples().getFirst().occurrences()).isEqualTo(2);
+            assertThat(diagnostics.omittedIgnoredLines()).isEqualTo(6);
+            assertThat(diagnostics.confidence()).isEqualTo(ParserDiagnostics.Confidence.LOW);
+        });
     }
 
     private String sampleDump() throws IOException {

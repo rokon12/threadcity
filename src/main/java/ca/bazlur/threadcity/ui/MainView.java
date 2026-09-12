@@ -14,6 +14,7 @@ import ca.bazlur.threadcity.ui.component.IncidentComparisonPanel;
 import ca.bazlur.threadcity.ui.component.IncidentTimeMachine;
 import ca.bazlur.threadcity.ui.component.LockTrafficMap;
 import ca.bazlur.threadcity.ui.component.MultiDumpComparisonPanel;
+import ca.bazlur.threadcity.ui.component.ParserConfidencePanel;
 import ca.bazlur.threadcity.ui.component.SynchronizerObservatory;
 import ca.bazlur.threadcity.ui.component.StackCohortExplorer;
 import ca.bazlur.threadcity.ui.component.ThreadEvidencePanel;
@@ -103,6 +104,7 @@ public class MainView extends Div {
     private final ThreadEvidencePanel evidencePanel;
     private final SynchronizerObservatory synchronizerObservatory;
     private final StackCohortExplorer stackCohortExplorer;
+    private final ParserConfidencePanel parserConfidencePanel;
     private final IncidentComparisonPanel comparisonPanel;
     private final MultiDumpComparisonPanel multiDumpComparisonPanel;
     private final AiCopilotPanel copilotPanel;
@@ -122,6 +124,7 @@ public class MainView extends Div {
         blockerLeaderboard = new BlockerLeaderboard(this::inspectThread);
         synchronizerObservatory = new SynchronizerObservatory(this::inspectThread, this::inspectLock);
         stackCohortExplorer = new StackCohortExplorer(this::inspectThread);
+        parserConfidencePanel = new ParserConfidencePanel(this::showSuccess);
         timeMachine = new IncidentTimeMachine(analysisService, this::inspectThread);
         comparisonPanel = new IncidentComparisonPanel(analysisService);
         multiDumpComparisonPanel = new MultiDumpComparisonPanel(analysisService, this::showSuccess, this::showError);
@@ -258,7 +261,7 @@ public class MainView extends Div {
 
         overviewPage.add(metrics, trafficMap, blockerLeaderboard, findings);
         timelinePage.add(timeMachine, replayTimeline);
-        threadsPage.add(evidencePanel);
+        threadsPage.add(evidencePanel, parserConfidencePanel);
         synchronizersPage.add(synchronizerObservatory);
         cohortsPage.add(stackCohortExplorer);
         comparePage.add(multiDumpComparisonPanel, comparisonPanel);
@@ -442,6 +445,7 @@ public class MainView extends Div {
         evidencePanel.showResult(result);
         synchronizerObservatory.render(result);
         stackCohortExplorer.render(result);
+        parserConfidencePanel.render(result);
         renderStatus(result);
         renderMetrics(result);
         trafficMap.render(result);
@@ -592,6 +596,7 @@ public class MainView extends Div {
         evidencePanel.clear();
         synchronizerObservatory.clear();
         stackCohortExplorer.clear();
+        parserConfidencePanel.clear();
         multiDumpComparisonPanel.clear();
         replayTimeline.setVisible(false);
         upload.clearFileList();

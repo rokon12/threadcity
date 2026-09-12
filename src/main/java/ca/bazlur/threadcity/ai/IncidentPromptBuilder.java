@@ -97,6 +97,9 @@ final class IncidentPromptBuilder {
         append(prompt, "Threads: " + result.snapshot().threads().size(), MAX_INCIDENT_CONTEXT_CHARS);
         append(prompt, "Confirmed deadlocks: " + result.deadlocks().size(), MAX_INCIDENT_CONTEXT_CHARS);
         append(prompt, "Wait edges: " + result.waitEdges().size(), MAX_INCIDENT_CONTEXT_CHARS);
+        append(prompt, "Parser coverage: " + result.snapshot().parserDiagnostics().coveragePercent()
+                + "% (" + result.snapshot().parserDiagnostics().confidence().label() + ")",
+                MAX_INCIDENT_CONTEXT_CHARS);
 
         if (result.waitEdges().isEmpty()) {
             append(prompt, "Ownership-dependent waits: none confirmed", MAX_INCIDENT_CONTEXT_CHARS);

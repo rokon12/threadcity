@@ -3,11 +3,14 @@ package ca.bazlur.threadcity.parser;
 import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.LockReference;
 import ca.bazlur.threadcity.domain.LockWaitKind;
+import ca.bazlur.threadcity.domain.ParserDiagnostics;
 import ca.bazlur.threadcity.domain.ThreadSnapshot;
 import ca.bazlur.threadcity.domain.ThreadState;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,6 +22,10 @@ public final class HotSpotThreadDumpParser {
             "^-\\s+(waiting to lock|waiting on|parking to wait for|locked)\\s+<([^>]+)>\\s+\\(a\\s+([^)]+)\\).*");
     private static final Pattern OWNABLE_LOCK = Pattern.compile(
             "^-\\s+<([^>]+)>\\s+\\(a\\s+([^)]+)\\).*");
+    private static final Pattern TIMESTAMP = Pattern.compile(
+            "^\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?(?:\\s+.*)?$");
+    private static final int MAX_IGNORED_SAMPLES = 50;
+    private static final int MAX_IGNORED_LINE_CHARS = 240;
 
     public ThreadSnapshot parse(String sourceName, String dump) {
         if (dump == null || dump.isBlank()) {
@@ -29,10 +36,16 @@ public final class HotSpotThreadDumpParser {
         List<JavaThread> threads = new ArrayList<>();
         ThreadBuilder current = null;
         boolean ownableSynchronizers = false;
+        DiagnosticsCollector diagnostics = new DiagnosticsCollector();
 
         for (String line : dump.split("\\R")) {
+            if (line.isBlank()) {
+                continue;
+            }
+            diagnostics.observe();
             Matcher headerMatcher = HEADER.matcher(line);
             if (headerMatcher.matches()) {
+                diagnostics.recognized();
                 if (current != null) {
                     threads.add(current.build(threads.size()));
                 }
@@ -42,11 +55,17 @@ public final class HotSpotThreadDumpParser {
             }
 
             if (current == null) {
+                if (isKnownPreamble(line.strip())) {
+                    diagnostics.recognized();
+                } else {
+                    diagnostics.ignored(line);
+                }
                 continue;
             }
 
             String stripped = line.strip();
             if ("Locked ownable synchronizers:".equals(stripped)) {
+                diagnostics.recognized();
                 ownableSynchronizers = true;
                 continue;
             }
@@ -54,24 +73,32 @@ public final class HotSpotThreadDumpParser {
             if (ownableSynchronizers) {
                 Matcher ownableMatcher = OWNABLE_LOCK.matcher(stripped);
                 if (ownableMatcher.matches()) {
+                    diagnostics.recognized();
                     current.ownedLocks.add(new LockReference(ownableMatcher.group(1), ownableMatcher.group(2)));
+                } else if ("- None".equals(stripped)) {
+                    diagnostics.recognized();
+                } else {
+                    diagnostics.ignored(line);
                 }
                 continue;
             }
 
             Matcher stateMatcher = STATE.matcher(stripped);
             if (stateMatcher.find()) {
+                diagnostics.recognized();
                 current.state = ThreadState.fromDump(stateMatcher.group(1));
                 continue;
             }
 
             if (stripped.startsWith("at ")) {
+                diagnostics.recognized();
                 current.stackFrames.add(stripped);
                 continue;
             }
 
             Matcher lockMatcher = LOCK.matcher(stripped);
             if (lockMatcher.matches()) {
+                diagnostics.recognized();
                 LockReference lock = new LockReference(lockMatcher.group(2), lockMatcher.group(3));
                 if ("locked".equals(lockMatcher.group(1))) {
                     current.ownedLocks.add(lock);
@@ -84,7 +111,9 @@ public final class HotSpotThreadDumpParser {
                         default -> LockWaitKind.UNKNOWN;
                     };
                 }
+                continue;
             }
+            diagnostics.ignored(line);
         }
 
         if (current != null) {
@@ -93,7 +122,14 @@ public final class HotSpotThreadDumpParser {
         if (threads.isEmpty()) {
             throw new IllegalArgumentException("No HotSpot thread headers were found");
         }
-        return new ThreadSnapshot(sourceName, threads);
+        return new ThreadSnapshot(sourceName, threads, diagnostics.build());
+    }
+
+    private boolean isKnownPreamble(String line) {
+        return TIMESTAMP.matcher(line).matches()
+                || line.startsWith("Full thread dump ")
+                || line.startsWith("Threads class SMR info:")
+                || line.startsWith("JNI global refs:");
     }
 
     private static String stripBom(String dump) {
@@ -133,6 +169,45 @@ public final class HotSpotThreadDumpParser {
 
         private JavaThread build(int id) {
             return new JavaThread(id, name, header, state, stackFrames, ownedLocks, waitingOn, waitKind);
+        }
+    }
+
+    private static final class DiagnosticsCollector {
+        private final Map<String, Integer> ignoredSamples = new LinkedHashMap<>();
+        private int contentLines;
+        private int recognizedLines;
+        private int ignoredLines;
+        private int omittedIgnoredLines;
+
+        private void observe() {
+            contentLines++;
+        }
+
+        private void recognized() {
+            recognizedLines++;
+        }
+
+        private void ignored(String line) {
+            ignoredLines++;
+            String safe = line.strip().replaceAll("[\\p{Cntrl}]", "?");
+            if (safe.length() > MAX_IGNORED_LINE_CHARS) {
+                safe = safe.substring(0, MAX_IGNORED_LINE_CHARS - 1) + "…";
+            }
+            if (ignoredSamples.containsKey(safe)) {
+                ignoredSamples.merge(safe, 1, Integer::sum);
+            } else if (ignoredSamples.size() < MAX_IGNORED_SAMPLES) {
+                ignoredSamples.put(safe, 1);
+            } else {
+                omittedIgnoredLines++;
+            }
+        }
+
+        private ParserDiagnostics build() {
+            List<ParserDiagnostics.IgnoredLine> samples = ignoredSamples.entrySet().stream()
+                    .map(entry -> new ParserDiagnostics.IgnoredLine(entry.getKey(), entry.getValue()))
+                    .toList();
+            return new ParserDiagnostics(
+                    contentLines, recognizedLines, ignoredLines, samples, omittedIgnoredLines);
         }
     }
 }
