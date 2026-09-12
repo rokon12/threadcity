@@ -1,10 +1,12 @@
 package ca.bazlur.threadcity.ui.component;
 
 import ca.bazlur.threadcity.analysis.SnapshotDiffAnalyzer;
+import ca.bazlur.threadcity.analysis.SnapshotTrendAnalyzer;
 import ca.bazlur.threadcity.application.ThreadDumpAnalysisService;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.SnapshotDiff;
 import ca.bazlur.threadcity.domain.ThreadChange;
+import ca.bazlur.threadcity.domain.PersistentThread;
 import ca.bazlur.threadcity.parser.ThreadDumpUploadValidator;
 import com.vaadin.flow.component.Component;
 import com.vaadin.flow.component.button.Button;
@@ -43,11 +45,13 @@ public final class MultiDumpComparisonPanel extends Div {
     private final Consumer<String> errorNotifier;
     private final ThreadDumpUploadValidator uploadValidator = new ThreadDumpUploadValidator();
     private final SnapshotDiffAnalyzer diffAnalyzer = new SnapshotDiffAnalyzer();
+    private final SnapshotTrendAnalyzer trendAnalyzer = new SnapshotTrendAnalyzer();
     private final List<AnalysisResult> snapshots = new ArrayList<>();
     private final Tabs timeline = new Tabs();
     private final Div emptyState = new Div();
     private final Div diffContent = new Div();
     private final Div metrics = new Div();
+    private final Div trends = new Div();
     private final Div beforeCard = new Div();
     private final Div afterCard = new Div();
     private final Grid<ThreadChange> changes = new Grid<>();
@@ -175,7 +179,8 @@ public final class MultiDumpComparisonPanel extends Div {
         split.setSplitterPosition(50);
         split.setWidthFull();
         split.addClassName("snapshot-diff-split");
-        diffContent.add(metrics, split, new H2("Thread-by-thread changes"), changes);
+        trends.addClassName("persistent-trends");
+        diffContent.add(metrics, trends, split, new H2("Thread-by-thread changes"), changes);
         diffContent.addClassName("snapshot-diff-content");
 
         add(eyebrow, new H2("Multi-dump case comparison"), help, uploadZone, timeline, emptyState, diffContent);
@@ -210,6 +215,7 @@ public final class MultiDumpComparisonPanel extends Div {
         if (snapshots.size() >= 2) {
             renderSelection(snapshots.size() - 1);
         }
+        renderTrends();
     }
 
     private void renderSelection(int selectedIndex) {
@@ -237,6 +243,37 @@ public final class MultiDumpComparisonPanel extends Div {
                 .sorted(Comparator.comparing(ThreadChange::changed).reversed()
                         .thenComparing(ThreadChange::identity))
                 .toList());
+    }
+
+    private void renderTrends() {
+        trends.removeAll();
+        List<PersistentThread> persistent = trendAnalyzer.findPersistentStalls(snapshots);
+        if (snapshots.size() < 3) {
+            trends.setVisible(false);
+            return;
+        }
+        trends.setVisible(true);
+        Span label = new Span(persistent.isEmpty()
+                ? "NO PERSISTENT STALL SIGNATURE"
+                : persistent.size() + " PERSISTENT STALL CANDIDATE" + (persistent.size() == 1 ? "" : "S"));
+        label.addClassName(persistent.isEmpty() ? "trend-clear" : "trend-warning");
+        trends.add(label);
+        if (persistent.isEmpty()) {
+            trends.add(new Paragraph(
+                    "No unique thread remained at the same suspicious state, wait target, and stack across all snapshots."));
+            return;
+        }
+        trends.add(new Paragraph(
+                "Repeated observation is stronger than a single dump, but still does not prove that a thread is permanently hung."));
+        persistent.forEach(thread -> {
+            Div card = new Div(
+                    new H2(thread.threadName()),
+                    new Paragraph(thread.state() + " across " + thread.snapshotCount() + " snapshots · "
+                            + thread.waitTarget()),
+                    new Span(thread.topFrame()));
+            card.addClassName("persistent-thread-card");
+            trends.add(card);
+        });
     }
 
     private void renderSnapshotCard(Div card, String label, AnalysisResult result) {

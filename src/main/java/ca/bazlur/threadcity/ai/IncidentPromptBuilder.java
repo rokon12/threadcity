@@ -115,6 +115,16 @@ final class IncidentPromptBuilder {
                 "- " + finding.severity() + ": " + safe(finding.title()) + " — " + safe(finding.explanation()),
                 MAX_INCIDENT_CONTEXT_CHARS));
 
+        append(prompt, "Detected incident patterns:", MAX_INCIDENT_CONTEXT_CHARS);
+        if (result.patterns().isEmpty()) {
+            append(prompt, "- none", MAX_INCIDENT_CONTEXT_CHARS);
+        } else {
+            result.patterns().forEach(pattern -> append(prompt,
+                    "- " + pattern.type().label() + " | confidence=" + pattern.confidence().label()
+                            + " | " + safe(pattern.title()) + " — " + safe(pattern.explanation()),
+                    MAX_INCIDENT_CONTEXT_CHARS));
+        }
+
         append(prompt, "Representative threads:", MAX_INCIDENT_CONTEXT_CHARS);
         List<JavaThread> threads = result.snapshot().threads().stream().limit(MAX_THREADS).toList();
         for (JavaThread thread : threads) {

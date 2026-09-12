@@ -13,6 +13,7 @@ public record AnalysisResult(
         List<StackCohort> stackCohorts,
         List<MethodHotspot> methodHotspots,
         List<StackCluster> stackClusters,
+        List<IncidentPattern> patterns,
         List<Finding> findings) {
 
     public AnalysisResult {
@@ -23,6 +24,7 @@ public record AnalysisResult(
         stackCohorts = List.copyOf(stackCohorts);
         methodHotspots = List.copyOf(methodHotspots);
         stackClusters = List.copyOf(stackClusters);
+        patterns = List.copyOf(patterns);
         findings = List.copyOf(findings);
     }
 

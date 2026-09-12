@@ -13,6 +13,7 @@ import ca.bazlur.threadcity.ui.component.AiCopilotPanel;
 import ca.bazlur.threadcity.ui.component.BlockerLeaderboard;
 import ca.bazlur.threadcity.ui.component.IncidentComparisonPanel;
 import ca.bazlur.threadcity.ui.component.IncidentTimeMachine;
+import ca.bazlur.threadcity.ui.component.IncidentPatternPanel;
 import ca.bazlur.threadcity.ui.component.LockTrafficMap;
 import ca.bazlur.threadcity.ui.component.MultiDumpComparisonPanel;
 import ca.bazlur.threadcity.ui.component.ParserConfidencePanel;
@@ -109,6 +110,7 @@ public class MainView extends Div {
     private final SynchronizerObservatory synchronizerObservatory;
     private final StackCohortExplorer stackCohortExplorer;
     private final ParserConfidencePanel parserConfidencePanel;
+    private final IncidentPatternPanel incidentPatternPanel;
     private final JfrTimelinePanel jfrTimelinePanel;
     private final IncidentComparisonPanel comparisonPanel;
     private final MultiDumpComparisonPanel multiDumpComparisonPanel;
@@ -131,6 +133,7 @@ public class MainView extends Div {
         synchronizerObservatory = new SynchronizerObservatory(this::inspectThread, this::inspectLock);
         stackCohortExplorer = new StackCohortExplorer(this::inspectThread);
         parserConfidencePanel = new ParserConfidencePanel(this::showSuccess);
+        incidentPatternPanel = new IncidentPatternPanel(this::inspectThread);
         jfrTimelinePanel = new JfrTimelinePanel(
                 jfrAnalysisService, this::inspectThread, this::showSuccess, this::showError);
         timeMachine = new IncidentTimeMachine(analysisService, this::inspectThread);
@@ -267,7 +270,7 @@ public class MainView extends Div {
         metrics.setWidthFull();
         findings.addClassName("findings-panel");
 
-        overviewPage.add(metrics, trafficMap, blockerLeaderboard, findings);
+        overviewPage.add(metrics, trafficMap, blockerLeaderboard, incidentPatternPanel, findings);
         timelinePage.add(timeMachine, replayTimeline);
         threadsPage.add(evidencePanel, parserConfidencePanel);
         synchronizersPage.add(synchronizerObservatory);
@@ -464,6 +467,7 @@ public class MainView extends Div {
         synchronizerObservatory.render(result);
         stackCohortExplorer.render(result);
         parserConfidencePanel.render(result);
+        incidentPatternPanel.render(result);
         jfrTimelinePanel.showResult(result);
         renderStatus(result);
         renderMetrics(result);
@@ -616,6 +620,7 @@ public class MainView extends Div {
         synchronizerObservatory.clear();
         stackCohortExplorer.clear();
         parserConfidencePanel.clear();
+        incidentPatternPanel.clear();
         jfrTimelinePanel.clear();
         multiDumpComparisonPanel.clear();
         replayTimeline.setVisible(false);

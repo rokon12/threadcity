@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 
 public final class ThreadDumpAnalyzer {
 
+    private final IncidentPatternDetector patternDetector = new IncidentPatternDetector();
+
     public AnalysisResult analyze(ThreadSnapshot snapshot) {
         List<WaitEdge> waitEdges = buildWaitEdges(snapshot);
         List<DeadlockCycle> deadlocks = findDeadlocks(snapshot.threads(), waitEdges);
@@ -42,6 +44,8 @@ public final class ThreadDumpAnalyzer {
                 .filter(StackCohort::repeated)
                 .map(cohort -> new StackCluster(cohort.stackFrames(), cohort.threads()))
                 .toList();
+        var patterns = patternDetector.detect(
+                deadlocks, blockingImpacts, synchronizers, stackCohorts, methodHotspots);
         List<Finding> findings = createFindings(snapshot, deadlocks, stackClusters);
         return new AnalysisResult(
                 snapshot,
@@ -52,6 +56,7 @@ public final class ThreadDumpAnalyzer {
                 stackCohorts,
                 methodHotspots,
                 stackClusters,
+                patterns,
                 findings);
     }
 
