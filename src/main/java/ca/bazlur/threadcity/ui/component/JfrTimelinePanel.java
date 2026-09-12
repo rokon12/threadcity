@@ -104,6 +104,18 @@ public final class JfrTimelinePanel extends Div {
         return Optional.ofNullable(jfrAnalysis);
     }
 
+    public void loadDemo() {
+        try {
+            jfrAnalysis = analysisService.analyzeDemo();
+            categories.clear();
+            search.clear();
+            renderAnalysis();
+            successNotifier.accept("Live demo JFR evidence generated in memory");
+        } catch (RuntimeException exception) {
+            errorNotifier.accept(exception.getMessage());
+        }
+    }
+
     public void clear() {
         dumpAnalysis = null;
         jfrAnalysis = null;

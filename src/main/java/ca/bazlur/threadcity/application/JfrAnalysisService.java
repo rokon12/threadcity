@@ -10,6 +10,11 @@ import jdk.jfr.consumer.RecordedFrame;
 import jdk.jfr.consumer.RecordedStackTrace;
 import jdk.jfr.consumer.RecordedThread;
 import jdk.jfr.consumer.RecordingFile;
+import jdk.jfr.Event;
+import jdk.jfr.Label;
+import jdk.jfr.Name;
+import jdk.jfr.Recording;
+import jdk.jfr.StackTrace;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -50,6 +55,52 @@ public final class JfrAnalysisService {
                     // The operating system will eventually reclaim its temporary directory.
                 }
             }
+        }
+    }
+
+    public JfrAnalysis analyzeDemo() {
+        Path recordingFile = null;
+        try (Recording recording = new Recording()) {
+            recording.enable(DemoEvidenceEvent.class).withStackTrace();
+            recording.start();
+            Thread checkout = Thread.ofPlatform().name("checkout-37")
+                    .start(() -> emitDemoEvidence("checkout waits for inventory", 4));
+            Thread inventory = Thread.ofPlatform().name("inventory-sync-12")
+                    .start(() -> emitDemoEvidence("inventory waits for payment", 3));
+            checkout.join();
+            inventory.join();
+            recording.stop();
+            recordingFile = Files.createTempFile("threadcity-demo-", ".jfr");
+            recording.dump(recordingFile);
+            return analyze("threadcity-demo.jfr", Files.readAllBytes(recordingFile));
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to create the built-in JFR demonstration", exception);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Built-in JFR demonstration was interrupted", exception);
+        } finally {
+            if (recordingFile != null) {
+                try {
+                    Files.deleteIfExists(recordingFile);
+                } catch (IOException ignored) {
+                    // The operating system will reclaim its temporary directory.
+                }
+            }
+        }
+    }
+
+    private void emitDemoEvidence(String scenario, int pressure) {
+        for (int index = 1; index <= pressure; index++) {
+            DemoEvidenceEvent event = new DemoEvidenceEvent();
+            event.scenario = scenario;
+            event.pressure = index;
+            event.begin();
+            try {
+                Thread.sleep(8);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+            event.commit();
         }
     }
 
@@ -262,5 +313,16 @@ public final class JfrAnalysisService {
         private JfrEventSummary build() {
             return new JfrEventSummary(eventType, eventLabel, category, count, total, maximum);
         }
+    }
+
+    @Name("threadcity.lab.DemoEvidence")
+    @Label("ThreadCity demo pressure")
+    @StackTrace(true)
+    private static final class DemoEvidenceEvent extends Event {
+        @Label("Scenario")
+        private String scenario;
+
+        @Label("Pressure")
+        private int pressure;
     }
 }

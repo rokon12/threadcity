@@ -197,7 +197,7 @@ public final class MultiDumpComparisonPanel extends Div {
         addClassNames("panel", "multi-dump-comparison");
     }
 
-    private void loadDemo() {
+    public void loadDemo() {
         snapshots.clear();
         snapshots.add(analysisService.analyzeSample("T−10s · healthy", "corrected.txt"));
         snapshots.add(analysisService.analyzeSample("T−2s · contention", "contention.txt"));

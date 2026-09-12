@@ -1,6 +1,7 @@
 package ca.bazlur.threadcity.application;
 
 import ca.bazlur.threadcity.domain.JfrEventCategory;
+import ca.bazlur.threadcity.domain.JfrAnalysis;
 import jdk.jfr.Event;
 import jdk.jfr.Name;
 import jdk.jfr.Recording;
@@ -16,6 +17,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class JfrAnalysisServiceTest {
 
     private final JfrAnalysisService service = new JfrAnalysisService();
+
+    @Test
+    void createsARealDemoRecordingWithDumpCorrelatableThreadNames() {
+        JfrAnalysis analysis = service.analyzeDemo();
+
+        assertThat(analysis.relevantEvents()).isGreaterThanOrEqualTo(7);
+        assertThat(analysis.samples()).extracting(sample -> sample.threadName())
+                .contains("checkout-37", "inventory-sync-12");
+        assertThat(analysis.samples()).allMatch(sample -> sample.eventType().startsWith("threadcity.lab."));
+    }
 
     @Test
     void readsBoundedRelevantEventsFromARealRecording() throws Exception {

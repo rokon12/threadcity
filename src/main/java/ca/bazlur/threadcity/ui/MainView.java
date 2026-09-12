@@ -21,6 +21,7 @@ import ca.bazlur.threadcity.ui.component.LockTrafficMap;
 import ca.bazlur.threadcity.ui.component.MultiDumpComparisonPanel;
 import ca.bazlur.threadcity.ui.component.ParserConfidencePanel;
 import ca.bazlur.threadcity.ui.component.JfrTimelinePanel;
+import ca.bazlur.threadcity.ui.component.JudgeModeDialog;
 import ca.bazlur.threadcity.ui.component.SynchronizerObservatory;
 import ca.bazlur.threadcity.ui.component.StackCohortExplorer;
 import ca.bazlur.threadcity.ui.component.ThreadEvidencePanel;
@@ -110,6 +111,7 @@ public class MainView extends Div {
     private final Button replayButton = new Button("Replay a production deadlock");
     private final Button fixButton = new Button("Replay with the fix");
     private final Button clearButton = new Button("Clear analysis");
+    private final Button judgeModeButton = new Button("Launch Judge Mode", VaadinIcon.STAR.create());
     private final Upload upload;
     private final Upload bundleUpload;
     private final Anchor reportDownload;
@@ -125,6 +127,7 @@ public class MainView extends Div {
     private final IncidentComparisonPanel comparisonPanel;
     private final MultiDumpComparisonPanel multiDumpComparisonPanel;
     private final AiCopilotPanel copilotPanel;
+    private final JudgeModeDialog judgeModeDialog;
 
     private AnalysisResult currentResult;
     private Registration resizeRegistration;
@@ -161,6 +164,7 @@ public class MainView extends Div {
         upload = createUpload();
         bundleUpload = createBundleUpload();
         reportDownload = createReportDownload();
+        judgeModeDialog = new JudgeModeDialog(this::navigateJudgeMode);
 
         configureActions();
         addClassName("app-shell");
@@ -285,6 +289,10 @@ public class MainView extends Div {
 
         clearButton.addClickListener(event -> clearAnalysis());
         clearButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+
+        judgeModeButton.addClickListener(event -> judgeModeDialog.open());
+        judgeModeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_LARGE);
+        judgeModeButton.addClassName("judge-mode-button");
     }
 
     private Component buildHero() {
@@ -295,7 +303,7 @@ public class MainView extends Div {
                 "Turn an unreadable Java thread dump into an interactive map of lock ownership, circular waits, and repeated work.");
         description.addClassName("hero-copy");
 
-        HorizontalLayout actions = new HorizontalLayout(replayButton, fixButton);
+        HorizontalLayout actions = new HorizontalLayout(judgeModeButton, replayButton, fixButton);
         actions.addClassName("hero-actions");
         actions.setPadding(false);
         Span hint = new Span("No sign-in · Nothing persisted · Deterministic Java core · AI is opt-in");
@@ -558,6 +566,48 @@ public class MainView extends Div {
         bundleUpload.setEnabled(enabled);
         copilotPanel.setControlsEnabled(enabled);
         timeMachine.setControlsEnabled(enabled);
+        judgeModeButton.setEnabled(enabled);
+    }
+
+    private void navigateJudgeMode(int step) {
+        if (currentResult == null) {
+            render(analysisService.analyzeSample("Judge tour · checkout deadlock", "deadlock.txt"));
+            replayTimeline.setVisible(false);
+            revealAnalysis();
+        }
+        switch (step) {
+            case 0 -> {
+                selectWorkbenchPage(overviewTab);
+                trafficMap.getElement().callJsFunction("scrollIntoView", true);
+            }
+            case 1 -> {
+                selectWorkbenchPage(overviewTab);
+                blockerLeaderboard.getElement().callJsFunction("scrollIntoView", true);
+            }
+            case 2 -> {
+                selectWorkbenchPage(synchronizersTab);
+                synchronizerObservatory.getElement().callJsFunction("scrollIntoView", true);
+            }
+            case 3 -> {
+                selectWorkbenchPage(cohortsTab);
+                stackCohortExplorer.getElement().callJsFunction("scrollIntoView", true);
+            }
+            case 4 -> {
+                multiDumpComparisonPanel.loadDemo();
+                selectWorkbenchPage(compareTab);
+                multiDumpComparisonPanel.getElement().callJsFunction("scrollIntoView", true);
+            }
+            case 5 -> {
+                jfrTimelinePanel.loadDemo();
+                selectWorkbenchPage(jfrTab);
+                jfrTimelinePanel.getElement().callJsFunction("scrollIntoView", true);
+            }
+            case 6 -> {
+                selectWorkbenchPage(overviewTab);
+                reportDownload.getElement().callJsFunction("scrollIntoView", true);
+            }
+            default -> throw new IllegalArgumentException("Unknown judge-mode step: " + step);
+        }
     }
 
     private void revealAnalysis() {
