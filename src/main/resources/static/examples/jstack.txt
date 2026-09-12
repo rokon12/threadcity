@@ -1,0 +1,41 @@
+2026-09-11 02:14:07
+Full thread dump OpenJDK 64-Bit Server VM (25.0.1 mixed mode):
+
+"checkout-37" #37 prio=5 os_prio=31 cpu=18.42ms elapsed=4.11s tid=0x0000000121 nid=0x9103 waiting for monitor entry
+   java.lang.Thread.State: BLOCKED (on object monitor)
+	at ca.bazlur.checkout.InventoryService.reserve(InventoryService.java:84)
+	- waiting to lock <0x000000061a77b210> (a ca.bazlur.checkout.InventoryLedger)
+	- locked <0x000000061a77b180> (a ca.bazlur.checkout.PaymentLedger)
+	at ca.bazlur.checkout.CheckoutService.placeOrder(CheckoutService.java:51)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+
+"inventory-sync-12" #42 prio=5 os_prio=31 cpu=12.10ms elapsed=4.09s tid=0x0000000122 nid=0x9104 waiting for monitor entry
+   java.lang.Thread.State: BLOCKED (on object monitor)
+	at ca.bazlur.checkout.PaymentService.reconcile(PaymentService.java:63)
+	- waiting to lock <0x000000061a77b180> (a ca.bazlur.checkout.PaymentLedger)
+	- locked <0x000000061a77b210> (a ca.bazlur.checkout.InventoryLedger)
+	at ca.bazlur.checkout.InventorySync.run(InventorySync.java:29)
+	at java.base/java.lang.Thread.run(Thread.java:1474)
+
+"http-worker-1" #51 prio=5 os_prio=31 cpu=3.22ms elapsed=4.02s tid=0x0000000123 nid=0x9105 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+	at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+	at java.util.concurrent.locks.LockSupport.park(java.base@25/LockSupport.java:221)
+	at java.util.concurrent.LinkedBlockingQueue.take(java.base@25/LinkedBlockingQueue.java:435)
+
+"http-worker-2" #52 prio=5 os_prio=31 cpu=3.11ms elapsed=4.01s tid=0x0000000124 nid=0x9106 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+	at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+	at java.util.concurrent.locks.LockSupport.park(java.base@25/LockSupport.java:221)
+	at java.util.concurrent.LinkedBlockingQueue.take(java.base@25/LinkedBlockingQueue.java:435)
+
+"http-worker-3" #53 prio=5 os_prio=31 cpu=3.08ms elapsed=4.00s tid=0x0000000125 nid=0x9107 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+	at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+	at java.util.concurrent.locks.LockSupport.park(java.base@25/LockSupport.java:221)
+	at java.util.concurrent.LinkedBlockingQueue.take(java.base@25/LinkedBlockingQueue.java:435)
+
+"reference-handler" #2 daemon prio=10 os_prio=31 cpu=0.31ms elapsed=4.44s tid=0x0000000126 nid=0x9108 runnable
+   java.lang.Thread.State: RUNNABLE
+	at java.lang.ref.Reference.waitForReferencePendingList(java.base@25/Native Method)
+	at java.lang.ref.Reference.processPendingReferences(java.base@25/Reference.java:246)

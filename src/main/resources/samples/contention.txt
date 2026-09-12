@@ -1,0 +1,39 @@
+2026-09-11 02:14:05
+Full thread dump OpenJDK 64-Bit Server VM (25.0.1 mixed mode):
+
+"checkout-37" #37 prio=5 os_prio=0 cpu=34.11ms elapsed=88.02s tid=0x000060000101 nid=0x1903 waiting for monitor entry
+   java.lang.Thread.State: BLOCKED (on object monitor)
+        at ca.bazlur.checkout.InventoryService.reserve(InventoryService.java:84)
+        - waiting to lock <0x000000061a77b210> (a ca.bazlur.checkout.InventoryLedger)
+        - locked <0x000000061a77b180> (a ca.bazlur.checkout.PaymentLedger)
+        at ca.bazlur.checkout.CheckoutService.placeOrder(CheckoutService.java:51)
+        at java.base/java.lang.Thread.run(Thread.java:1474)
+
+"inventory-sync-12" #48 prio=5 os_prio=0 cpu=21.42ms elapsed=52.91s tid=0x000060000102 nid=0x1a03 runnable
+   java.lang.Thread.State: RUNNABLE
+        at ca.bazlur.checkout.InventoryService.reconcile(InventoryService.java:60)
+        - locked <0x000000061a77b210> (a ca.bazlur.checkout.InventoryLedger)
+        at java.base/java.lang.Thread.run(Thread.java:1474)
+
+"http-worker-1" #61 daemon prio=5 os_prio=0 tid=0x000060000201 nid=0x2103 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+        at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+        at java.util.concurrent.locks.LockSupport.park(java.base@25/LockSupport.java:221)
+        at java.util.concurrent.ForkJoinPool.awaitWork(ForkJoinPool.java:1895)
+
+"http-worker-2" #62 daemon prio=5 os_prio=0 tid=0x000060000202 nid=0x2203 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+        at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+        at java.util.concurrent.locks.LockSupport.park(java.base@25/LockSupport.java:221)
+        at java.util.concurrent.ForkJoinPool.awaitWork(ForkJoinPool.java:1895)
+
+"http-worker-3" #63 daemon prio=5 os_prio=0 tid=0x000060000203 nid=0x2303 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+        at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+        at java.util.concurrent.locks.LockSupport.park(java.base@25/LockSupport.java:221)
+        at java.util.concurrent.ForkJoinPool.awaitWork(ForkJoinPool.java:1895)
+
+"reference-handler" #2 daemon prio=10 os_prio=0 tid=0x000060000301 nid=0x1303 runnable
+   java.lang.Thread.State: RUNNABLE
+        at java.lang.ref.Reference.waitForReferencePendingList(java.base@25/Native Method)
+        at java.lang.ref.Reference.processPendingReferences(java.base@25/Reference.java:246)

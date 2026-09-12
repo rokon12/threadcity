@@ -1,0 +1,36 @@
+"checkout-37" #37 prio=5 os_prio=31 cpu=28.10ms elapsed=2.13s tid=0x000000013b810000 nid=0x6a03 runnable
+   java.lang.Thread.State: RUNNABLE
+        at com.acme.checkout.CheckoutService.complete(CheckoutService.java:91)
+        at com.acme.checkout.CheckoutService.reserveInventory(CheckoutService.java:76)
+        at com.acme.checkout.CheckoutController.submit(CheckoutController.java:42)
+
+"inventory-sync-12" #42 daemon prio=5 os_prio=31 cpu=13.42ms elapsed=2.12s tid=0x000000013b821000 nid=0x6903 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+        at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+        at java.util.concurrent.locks.LockSupport.park(java.base@25/LockSupport.java:221)
+        at com.acme.inventory.InventoryQueue.awaitWork(InventoryQueue.java:54)
+        - parking to wait for  <0x000000061a77b260> (a java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject)
+
+"checkout-worker-1" #51 daemon prio=5 tid=0x000000013b831000 nid=0x6803 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+        at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+        at java.util.concurrent.ThreadPoolExecutor.getTask(java.base@25/ThreadPoolExecutor.java:1070)
+        at java.util.concurrent.ThreadPoolExecutor.runWorker(java.base@25/ThreadPoolExecutor.java:1130)
+
+"checkout-worker-2" #52 daemon prio=5 tid=0x000000013b832000 nid=0x6703 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+        at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+        at java.util.concurrent.ThreadPoolExecutor.getTask(java.base@25/ThreadPoolExecutor.java:1070)
+        at java.util.concurrent.ThreadPoolExecutor.runWorker(java.base@25/ThreadPoolExecutor.java:1130)
+
+"checkout-worker-3" #53 daemon prio=5 tid=0x000000013b833000 nid=0x6603 waiting on condition
+   java.lang.Thread.State: WAITING (parking)
+        at jdk.internal.misc.Unsafe.park(java.base@25/Native Method)
+        at java.util.concurrent.ThreadPoolExecutor.getTask(java.base@25/ThreadPoolExecutor.java:1070)
+        at java.util.concurrent.ThreadPoolExecutor.runWorker(java.base@25/ThreadPoolExecutor.java:1130)
+
+"http-worker-9" #61 daemon prio=5 tid=0x000000013b841000 nid=0x6503 runnable
+   java.lang.Thread.State: RUNNABLE
+        at sun.nio.ch.KQueue.poll(java.base@25/Native Method)
+        at sun.nio.ch.KQueueSelectorImpl.doSelect(java.base@25/KQueueSelectorImpl.java:122)
+        at org.apache.tomcat.util.net.NioEndpoint$Poller.run(NioEndpoint.java:1560)

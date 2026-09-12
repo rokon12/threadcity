@@ -1,0 +1,14 @@
+target/
+node_modules/
+work/
+
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.log
+
+src/main/frontend/generated/
+src/main/bundles/
+vite.generated.ts
+types.d.ts
