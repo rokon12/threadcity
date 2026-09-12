@@ -55,6 +55,11 @@ public final class HotSpotThreadDumpParser {
                 continue;
             }
             diagnostics.observe();
+            String stripped = line.strip();
+            if (isDeadlockAppendixStart(stripped)) {
+                diagnostics.recognized();
+                break;
+            }
             Matcher headerMatcher = HEADER.matcher(line);
             if (headerMatcher.matches()) {
                 diagnostics.recognized();
@@ -76,7 +81,6 @@ public final class HotSpotThreadDumpParser {
                 continue;
             }
 
-            String stripped = line.strip();
             if ("Locked ownable synchronizers:".equals(stripped)) {
                 diagnostics.recognized();
                 ownableSynchronizers = true;
@@ -143,6 +147,10 @@ public final class HotSpotThreadDumpParser {
                 || line.startsWith("Full thread dump ")
                 || line.startsWith("Threads class SMR info:")
                 || line.startsWith("JNI global refs:");
+    }
+
+    private boolean isDeadlockAppendixStart(String line) {
+        return line.matches("Found (?:one|[0-9]+) Java-level deadlocks?:");
     }
 
     private static String stripBom(String dump) {

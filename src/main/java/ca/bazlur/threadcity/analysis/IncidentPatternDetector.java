@@ -35,6 +35,7 @@ public final class IncidentPatternDetector {
         deadlocks.forEach(cycle -> patterns.add(deadlock(cycle)));
         synchronizers.stream()
                 .filter(insight -> insight.acquisitionWaiters().size() >= GROUP_THRESHOLD)
+                .filter(insight -> insight.owners().size() == 1)
                 .forEach(insight -> patterns.add(lockConvoy(insight)));
         impacts.stream()
                 .filter(impact -> impact.transitivelyBlocked() >= GROUP_THRESHOLD)

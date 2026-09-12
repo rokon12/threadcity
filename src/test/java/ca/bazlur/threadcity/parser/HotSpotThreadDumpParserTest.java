@@ -18,6 +18,37 @@ class HotSpotThreadDumpParserTest {
     private final HotSpotThreadDumpParser parser = new HotSpotThreadDumpParser();
 
     @Test
+    void ignoresTheDuplicateDeadlockAppendixProducedByJcmd() {
+        String dump = """
+                "alpha" #1
+                   java.lang.Thread.State: BLOCKED
+                    - waiting to lock <0x2> (a example.SecondLock)
+                    - locked <0x1> (a example.FirstLock)
+                "beta" #2
+                   java.lang.Thread.State: BLOCKED
+                    - waiting to lock <0x1> (a example.FirstLock)
+                    - locked <0x2> (a example.SecondLock)
+
+                Found one Java-level deadlock:
+                =============================
+                "alpha":
+                  waiting to lock monitor 0x2, which is held by "beta"
+                Java stack information for the threads listed above:
+                ===================================================
+                "alpha":
+                    at example.Alpha.run(Alpha.java:1)
+                    - waiting to lock <0x2> (a example.SecondLock)
+                    - locked <0x1> (a example.FirstLock)
+                Found 1 deadlock.
+                """;
+
+        var snapshot = parser.parse("jcmd", dump);
+
+        assertThat(snapshot.threads()).extracting(thread -> thread.name())
+                .containsExactly("alpha", "beta");
+    }
+
+    @Test
     void parsesThreadsStatesStacksAndLocks() throws IOException {
         ThreadSnapshot snapshot = parser.parse("sample", sampleDump());
 
