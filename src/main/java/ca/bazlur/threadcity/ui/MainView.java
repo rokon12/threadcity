@@ -9,6 +9,7 @@ import ca.bazlur.threadcity.domain.ThreadState;
 import ca.bazlur.threadcity.domain.WaitEdge;
 import ca.bazlur.threadcity.parser.ThreadDumpUploadValidator;
 import ca.bazlur.threadcity.ui.component.AiCopilotPanel;
+import ca.bazlur.threadcity.ui.component.BlockerLeaderboard;
 import ca.bazlur.threadcity.ui.component.IncidentComparisonPanel;
 import ca.bazlur.threadcity.ui.component.IncidentTimeMachine;
 import ca.bazlur.threadcity.ui.component.LockTrafficMap;
@@ -90,6 +91,7 @@ public class MainView extends Div {
     private final Button clearButton = new Button("Clear analysis");
     private final Upload upload;
     private final LockTrafficMap trafficMap;
+    private final BlockerLeaderboard blockerLeaderboard;
     private final IncidentTimeMachine timeMachine;
     private final ThreadEvidencePanel evidencePanel;
     private final IncidentComparisonPanel comparisonPanel;
@@ -107,6 +109,7 @@ public class MainView extends Div {
                 this::showSuccess, aiAvailable ? this::askAiAboutThread : null);
         trafficMap = new LockTrafficMap(
                 "traffic-map", false, this::inspectThread, aiAvailable ? this::askAiAboutWait : null);
+        blockerLeaderboard = new BlockerLeaderboard(this::inspectThread);
         timeMachine = new IncidentTimeMachine(analysisService, this::inspectThread);
         comparisonPanel = new IncidentComparisonPanel(analysisService);
         copilotPanel = new AiCopilotPanel(
@@ -240,7 +243,7 @@ public class MainView extends Div {
         metrics.setWidthFull();
         findings.addClassName("findings-panel");
 
-        overviewPage.add(metrics, trafficMap, findings);
+        overviewPage.add(metrics, trafficMap, blockerLeaderboard, findings);
         timelinePage.add(timeMachine, replayTimeline);
         threadsPage.add(evidencePanel);
         comparePage.add(comparisonPanel);
@@ -422,6 +425,7 @@ public class MainView extends Div {
         renderStatus(result);
         renderMetrics(result);
         trafficMap.render(result);
+        blockerLeaderboard.render(result);
         renderFindings(result);
     }
 

@@ -8,12 +8,14 @@ public record AnalysisResult(
         ThreadSnapshot snapshot,
         List<WaitEdge> waitEdges,
         List<DeadlockCycle> deadlocks,
+        List<BlockingImpact> blockingImpacts,
         List<StackCluster> stackClusters,
         List<Finding> findings) {
 
     public AnalysisResult {
         waitEdges = List.copyOf(waitEdges);
         deadlocks = List.copyOf(deadlocks);
+        blockingImpacts = List.copyOf(blockingImpacts);
         stackClusters = List.copyOf(stackClusters);
         findings = List.copyOf(findings);
     }

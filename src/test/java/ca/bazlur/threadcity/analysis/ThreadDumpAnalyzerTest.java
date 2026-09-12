@@ -142,6 +142,45 @@ class ThreadDumpAnalyzerTest {
         assertThat(result.deadlocks()).isEmpty();
     }
 
+    @Test
+    void ranksBlockersByTransitiveBlastRadiusAndDepth() {
+        String dump = """
+                "root-owner" #1
+                   java.lang.Thread.State: RUNNABLE
+                    - locked <0x1> (a example.RootLock)
+                "middle-owner" #2
+                   java.lang.Thread.State: BLOCKED
+                    - waiting to lock <0x1> (a example.RootLock)
+                    - locked <0x2> (a example.MiddleLock)
+                "leaf" #3
+                   java.lang.Thread.State: BLOCKED
+                    - waiting to lock <0x2> (a example.MiddleLock)
+                "sibling" #4
+                   java.lang.Thread.State: BLOCKED
+                    - waiting to lock <0x1> (a example.RootLock)
+                "independent" #5
+                   java.lang.Thread.State: RUNNABLE
+                """;
+
+        AnalysisResult result = analyzer.analyze(parser.parse("cascade", dump));
+
+        assertThat(result.blockingImpacts()).hasSize(2);
+        assertThat(result.blockingImpacts().getFirst()).satisfies(impact -> {
+            assertThat(impact.blocker().name()).isEqualTo("root-owner");
+            assertThat(impact.directlyBlocked()).isEqualTo(2);
+            assertThat(impact.transitivelyBlocked()).isEqualTo(3);
+            assertThat(impact.maximumDepth()).isEqualTo(2);
+            assertThat(impact.affectedThreads())
+                    .extracting(thread -> thread.name())
+                    .containsExactly("middle-owner", "sibling", "leaf");
+        });
+        assertThat(result.blockingImpacts().get(1)).satisfies(impact -> {
+            assertThat(impact.blocker().name()).isEqualTo("middle-owner");
+            assertThat(impact.transitivelyBlocked()).isEqualTo(1);
+            assertThat(impact.maximumDepth()).isEqualTo(1);
+        });
+    }
+
     private String sampleDump() throws IOException {
         try (var stream = getClass().getResourceAsStream("/samples/deadlock.txt")) {
             assertThat(stream).isNotNull();

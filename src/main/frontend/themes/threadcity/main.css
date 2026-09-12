@@ -486,6 +486,46 @@ body {
     padding: 1.4rem;
 }
 
+.blocker-leaderboard {
+    overflow: hidden;
+}
+
+.blocker-grid {
+    border: 1px solid var(--tc-line);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.blast-radius {
+    display: inline-grid;
+    min-width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border-radius: 999px;
+    color: var(--tc-amber);
+    background: rgba(255, 200, 87, 0.12);
+    font-weight: 900;
+}
+
+.blast-radius-critical {
+    color: var(--tc-red);
+    background: rgba(255, 93, 115, 0.14);
+    box-shadow: 0 0 20px rgba(255, 93, 115, 0.16);
+}
+
+.blocker-empty {
+    display: flex;
+    min-height: 110px;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+    border: 1px solid rgba(86, 227, 159, 0.2);
+    border-radius: 12px;
+    color: var(--tc-green);
+    background: rgba(86, 227, 159, 0.045);
+    font-weight: 800;
+}
+
 .traffic-header {
     align-items: center;
 }

@@ -1,6 +1,7 @@
 package ca.bazlur.threadcity.analysis;
 
 import ca.bazlur.threadcity.domain.AnalysisResult;
+import ca.bazlur.threadcity.domain.BlockingImpact;
 import ca.bazlur.threadcity.domain.DeadlockCycle;
 import ca.bazlur.threadcity.domain.Finding;
 import ca.bazlur.threadcity.domain.JavaThread;
@@ -11,6 +12,7 @@ import ca.bazlur.threadcity.domain.ThreadState;
 import ca.bazlur.threadcity.domain.WaitEdge;
 
 import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -25,9 +27,58 @@ public final class ThreadDumpAnalyzer {
     public AnalysisResult analyze(ThreadSnapshot snapshot) {
         List<WaitEdge> waitEdges = buildWaitEdges(snapshot);
         List<DeadlockCycle> deadlocks = findDeadlocks(snapshot.threads(), waitEdges);
+        List<BlockingImpact> blockingImpacts = calculateBlockingImpacts(waitEdges);
         List<StackCluster> stackClusters = findStackClusters(snapshot.threads());
         List<Finding> findings = createFindings(snapshot, deadlocks, stackClusters);
-        return new AnalysisResult(snapshot, waitEdges, deadlocks, stackClusters, findings);
+        return new AnalysisResult(snapshot, waitEdges, deadlocks, blockingImpacts, stackClusters, findings);
+    }
+
+    private List<BlockingImpact> calculateBlockingImpacts(List<WaitEdge> edges) {
+        Map<Integer, JavaThread> owners = new LinkedHashMap<>();
+        Map<Integer, List<JavaThread>> waitersByOwner = new LinkedHashMap<>();
+        edges.forEach(edge -> {
+            owners.putIfAbsent(edge.owner().id(), edge.owner());
+            waitersByOwner.computeIfAbsent(edge.owner().id(), ignored -> new ArrayList<>())
+                    .add(edge.waiter());
+        });
+
+        return owners.values().stream()
+                .map(owner -> blockingImpact(owner, waitersByOwner))
+                .sorted(Comparator.comparingInt(BlockingImpact::transitivelyBlocked)
+                        .reversed()
+                        .thenComparing(Comparator.comparingInt(BlockingImpact::maximumDepth).reversed())
+                        .thenComparing(impact -> impact.blocker().name()))
+                .toList();
+    }
+
+    private BlockingImpact blockingImpact(
+            JavaThread blocker,
+            Map<Integer, List<JavaThread>> waitersByOwner) {
+        List<JavaThread> directWaiters = waitersByOwner.getOrDefault(blocker.id(), List.of());
+        List<JavaThread> affected = new ArrayList<>();
+        Set<Integer> visited = new HashSet<>();
+        visited.add(blocker.id());
+        ArrayDeque<ThreadAtDepth> work = new ArrayDeque<>();
+        directWaiters.forEach(waiter -> work.addLast(new ThreadAtDepth(waiter, 1)));
+        int maximumDepth = 0;
+
+        while (!work.isEmpty()) {
+            ThreadAtDepth current = work.removeFirst();
+            if (!visited.add(current.thread().id())) {
+                continue;
+            }
+            affected.add(current.thread());
+            maximumDepth = Math.max(maximumDepth, current.depth());
+            waitersByOwner.getOrDefault(current.thread().id(), List.of())
+                    .forEach(waiter -> work.addLast(new ThreadAtDepth(waiter, current.depth() + 1)));
+        }
+
+        return new BlockingImpact(
+                blocker,
+                directWaiters.size(),
+                affected.size(),
+                maximumDepth,
+                affected);
     }
 
     private List<WaitEdge> buildWaitEdges(ThreadSnapshot snapshot) {
@@ -143,5 +194,8 @@ public final class ThreadDumpAnalyzer {
                     List.of()));
         }
         return findings;
+    }
+
+    private record ThreadAtDepth(JavaThread thread, int depth) {
     }
 }
