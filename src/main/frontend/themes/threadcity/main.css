@@ -1259,6 +1259,50 @@ body {
 .thread-change-warning { color: var(--tc-amber); background: rgba(255, 200, 87, 0.12); }
 .thread-change-good { color: var(--tc-green); background: rgba(86, 227, 159, 0.10); }
 
+.stack-cohort-explorer > .eyebrow {
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.stack-cohort-explorer > h2 {
+    margin: 0;
+}
+
+.cohort-filter-bar {
+    flex-wrap: wrap;
+    margin-bottom: 0.65rem;
+}
+
+.cohort-filter-bar vaadin-multi-select-combo-box {
+    min-width: 260px;
+}
+
+.cohort-summary {
+    display: block;
+    margin-bottom: 0.75rem;
+    color: var(--tc-blue);
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.cohort-view-tabs {
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--tc-line);
+}
+
+.cohort-tree-grid,
+.method-hotspot-grid {
+    border: 1px solid var(--tc-line);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.method-hotspot-grid vaadin-progress-bar {
+    --vaadin-progress-bar-value-background: var(--tc-green);
+}
+
 .comparison-split {
     min-height: 390px;
     margin: 1rem 0;
@@ -1459,6 +1503,8 @@ body {
     .comparison-upload-zone { grid-template-columns: 1fr; }
     .comparison-case-actions { justify-content: flex-start; }
     .snapshot-diff-content > div:first-child { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cohort-filter-bar { align-items: stretch; flex-direction: column; }
+    .cohort-filter-bar > * { width: 100%; }
 }
 
 @media (max-width: 600px) {

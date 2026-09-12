@@ -15,6 +15,7 @@ import ca.bazlur.threadcity.ui.component.IncidentTimeMachine;
 import ca.bazlur.threadcity.ui.component.LockTrafficMap;
 import ca.bazlur.threadcity.ui.component.MultiDumpComparisonPanel;
 import ca.bazlur.threadcity.ui.component.SynchronizerObservatory;
+import ca.bazlur.threadcity.ui.component.StackCohortExplorer;
 import ca.bazlur.threadcity.ui.component.ThreadEvidencePanel;
 import ca.bazlur.threadcity.ui.support.IncidentNarrative;
 import ca.bazlur.threadcity.ui.support.AiEvidenceReference;
@@ -79,6 +80,7 @@ public class MainView extends Div {
     private final Div timelinePage = new Div();
     private final Div threadsPage = new Div();
     private final Div synchronizersPage = new Div();
+    private final Div cohortsPage = new Div();
     private final Div comparePage = new Div();
     private final Div copilotPage = new Div();
     private final Tabs workbenchTabs = new Tabs();
@@ -86,6 +88,7 @@ public class MainView extends Div {
     private final Tab timelineTab = tab(VaadinIcon.TIME_BACKWARD, "Time machine");
     private final Tab threadsTab = tab(VaadinIcon.TABLE, "Threads & evidence");
     private final Tab synchronizersTab = tab(VaadinIcon.LOCK, "Synchronizers");
+    private final Tab cohortsTab = tab(VaadinIcon.CLUSTER, "Stack cohorts");
     private final Tab compareTab = tab(VaadinIcon.SPLIT, "Compare fix");
     private final Tab copilotTab = tab(VaadinIcon.CHAT, "AI copilot");
     private final Map<Tab, Component> workbenchPages = new LinkedHashMap<>();
@@ -99,6 +102,7 @@ public class MainView extends Div {
     private final IncidentTimeMachine timeMachine;
     private final ThreadEvidencePanel evidencePanel;
     private final SynchronizerObservatory synchronizerObservatory;
+    private final StackCohortExplorer stackCohortExplorer;
     private final IncidentComparisonPanel comparisonPanel;
     private final MultiDumpComparisonPanel multiDumpComparisonPanel;
     private final AiCopilotPanel copilotPanel;
@@ -117,6 +121,7 @@ public class MainView extends Div {
                 "traffic-map", false, this::inspectThread, aiAvailable ? this::askAiAboutWait : null);
         blockerLeaderboard = new BlockerLeaderboard(this::inspectThread);
         synchronizerObservatory = new SynchronizerObservatory(this::inspectThread, this::inspectLock);
+        stackCohortExplorer = new StackCohortExplorer(this::inspectThread);
         timeMachine = new IncidentTimeMachine(analysisService, this::inspectThread);
         comparisonPanel = new IncidentComparisonPanel(analysisService);
         multiDumpComparisonPanel = new MultiDumpComparisonPanel(analysisService, this::showSuccess, this::showError);
@@ -255,6 +260,7 @@ public class MainView extends Div {
         timelinePage.add(timeMachine, replayTimeline);
         threadsPage.add(evidencePanel);
         synchronizersPage.add(synchronizerObservatory);
+        cohortsPage.add(stackCohortExplorer);
         comparePage.add(multiDumpComparisonPanel, comparisonPanel);
         copilotPage.add(copilotPanel);
         configureWorkbenchTabs();
@@ -268,7 +274,8 @@ public class MainView extends Div {
     }
 
     private void configureWorkbenchTabs() {
-        workbenchTabs.add(overviewTab, timelineTab, threadsTab, synchronizersTab, compareTab, copilotTab);
+        workbenchTabs.add(
+                overviewTab, timelineTab, threadsTab, synchronizersTab, cohortsTab, compareTab, copilotTab);
         workbenchTabs.addThemeVariants(TabsVariant.LUMO_EQUAL_WIDTH_TABS);
         workbenchTabs.addClassName("workbench-tabs");
         workbenchTabs.setWidthFull();
@@ -277,6 +284,7 @@ public class MainView extends Div {
         workbenchPages.put(timelineTab, timelinePage);
         workbenchPages.put(threadsTab, threadsPage);
         workbenchPages.put(synchronizersTab, synchronizersPage);
+        workbenchPages.put(cohortsTab, cohortsPage);
         workbenchPages.put(compareTab, comparePage);
         workbenchPages.put(copilotTab, copilotPage);
         workbenchPages.values().forEach(page -> {
@@ -433,6 +441,7 @@ public class MainView extends Div {
         copilotPanel.showResult(result);
         evidencePanel.showResult(result);
         synchronizerObservatory.render(result);
+        stackCohortExplorer.render(result);
         renderStatus(result);
         renderMetrics(result);
         trafficMap.render(result);
@@ -582,6 +591,7 @@ public class MainView extends Div {
         copilotPanel.clear();
         evidencePanel.clear();
         synchronizerObservatory.clear();
+        stackCohortExplorer.clear();
         multiDumpComparisonPanel.clear();
         replayTimeline.setVisible(false);
         upload.clearFileList();

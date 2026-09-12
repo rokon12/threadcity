@@ -8,6 +8,8 @@ import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.LockReference;
 import ca.bazlur.threadcity.domain.SynchronizerInsight;
 import ca.bazlur.threadcity.domain.StackCluster;
+import ca.bazlur.threadcity.domain.StackCohort;
+import ca.bazlur.threadcity.domain.MethodHotspot;
 import ca.bazlur.threadcity.domain.ThreadSnapshot;
 import ca.bazlur.threadcity.domain.ThreadState;
 import ca.bazlur.threadcity.domain.WaitEdge;
@@ -19,7 +21,11 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.HexFormat;
 import java.util.Set;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -30,10 +36,23 @@ public final class ThreadDumpAnalyzer {
         List<DeadlockCycle> deadlocks = findDeadlocks(snapshot.threads(), waitEdges);
         List<BlockingImpact> blockingImpacts = calculateBlockingImpacts(waitEdges);
         List<SynchronizerInsight> synchronizers = analyzeSynchronizers(snapshot, deadlocks, blockingImpacts);
-        List<StackCluster> stackClusters = findStackClusters(snapshot.threads());
+        List<StackCohort> stackCohorts = findStackCohorts(snapshot.threads());
+        List<MethodHotspot> methodHotspots = findMethodHotspots(snapshot.threads());
+        List<StackCluster> stackClusters = stackCohorts.stream()
+                .filter(StackCohort::repeated)
+                .map(cohort -> new StackCluster(cohort.stackFrames(), cohort.threads()))
+                .toList();
         List<Finding> findings = createFindings(snapshot, deadlocks, stackClusters);
         return new AnalysisResult(
-                snapshot, waitEdges, deadlocks, blockingImpacts, synchronizers, stackClusters, findings);
+                snapshot,
+                waitEdges,
+                deadlocks,
+                blockingImpacts,
+                synchronizers,
+                stackCohorts,
+                methodHotspots,
+                stackClusters,
+                findings);
     }
 
     private List<SynchronizerInsight> analyzeSynchronizers(
@@ -178,7 +197,7 @@ public final class ThreadDumpAnalyzer {
         return cycles;
     }
 
-    private List<StackCluster> findStackClusters(List<JavaThread> threads) {
+    private List<StackCohort> findStackCohorts(List<JavaThread> threads) {
         return threads.stream()
                 .filter(thread -> !thread.stackFrames().isEmpty())
                 .collect(Collectors.groupingBy(
@@ -186,12 +205,40 @@ public final class ThreadDumpAnalyzer {
                         LinkedHashMap::new,
                         Collectors.toList()))
                 .values().stream()
-                .filter(cluster -> cluster.size() > 1)
                 .sorted(Comparator.comparingInt((List<JavaThread> cluster) -> cluster.size())
                         .reversed()
                         .thenComparingInt(cluster -> cluster.getFirst().id()))
-                .map(cluster -> new StackCluster(cluster.getFirst().stackFrames(), cluster))
+                .map(cluster -> new StackCohort(
+                        fingerprint(cluster.getFirst().stackFrames()),
+                        cluster.getFirst().stackFrames(),
+                        cluster))
                 .toList();
+    }
+
+    private List<MethodHotspot> findMethodHotspots(List<JavaThread> threads) {
+        return threads.stream()
+                .filter(thread -> thread.state() == ThreadState.RUNNABLE)
+                .filter(thread -> !thread.stackFrames().isEmpty())
+                .collect(Collectors.groupingBy(
+                        JavaThread::topFrame,
+                        LinkedHashMap::new,
+                        Collectors.toList()))
+                .entrySet().stream()
+                .map(entry -> new MethodHotspot(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparingInt((MethodHotspot hotspot) -> hotspot.threads().size())
+                        .reversed()
+                        .thenComparing(MethodHotspot::method))
+                .toList();
+    }
+
+    private String fingerprint(List<String> frames) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(String.join("\n", frames).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash, 0, 6);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
     }
 
     private List<Finding> createFindings(

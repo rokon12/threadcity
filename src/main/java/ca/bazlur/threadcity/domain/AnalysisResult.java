@@ -10,6 +10,8 @@ public record AnalysisResult(
         List<DeadlockCycle> deadlocks,
         List<BlockingImpact> blockingImpacts,
         List<SynchronizerInsight> synchronizers,
+        List<StackCohort> stackCohorts,
+        List<MethodHotspot> methodHotspots,
         List<StackCluster> stackClusters,
         List<Finding> findings) {
 
@@ -18,6 +20,8 @@ public record AnalysisResult(
         deadlocks = List.copyOf(deadlocks);
         blockingImpacts = List.copyOf(blockingImpacts);
         synchronizers = List.copyOf(synchronizers);
+        stackCohorts = List.copyOf(stackCohorts);
+        methodHotspots = List.copyOf(methodHotspots);
         stackClusters = List.copyOf(stackClusters);
         findings = List.copyOf(findings);
     }

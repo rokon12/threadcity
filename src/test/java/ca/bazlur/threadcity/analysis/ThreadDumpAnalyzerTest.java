@@ -27,6 +27,15 @@ class ThreadDumpAnalyzerTest {
                 .containsExactly("checkout-37", "inventory-sync-12");
         assertThat(result.stackClusters()).singleElement()
                 .satisfies(cluster -> assertThat(cluster.threads()).hasSize(3));
+        assertThat(result.stackCohorts()).hasSize(4);
+        assertThat(result.stackCohorts().getFirst()).satisfies(cohort -> {
+            assertThat(cohort.fingerprint()).hasSize(12);
+            assertThat(cohort.threads()).hasSize(3);
+            assertThat(cohort.repeated()).isTrue();
+        });
+        assertThat(result.methodHotspots()).singleElement()
+                .satisfies(hotspot -> assertThat(hotspot.threads().getFirst().name())
+                        .isEqualTo("reference-handler"));
         assertThat(result.findings())
                 .extracting(Finding::severity)
                 .contains(Finding.Severity.CRITICAL, Finding.Severity.INFO);
@@ -223,6 +232,31 @@ class ThreadDumpAnalyzerTest {
                     assertThat(insight.notificationWaiters())
                             .extracting(thread -> thread.name()).containsExactly("condition-waiter");
                 });
+    }
+
+    @Test
+    void groupsRunnableThreadsByCurrentTopFrame() {
+        String dump = """
+                "runner-one" #1
+                   java.lang.Thread.State: RUNNABLE
+                    at example.Shared.poll(Shared.java:10)
+                "runner-two" #2
+                   java.lang.Thread.State: RUNNABLE
+                    at example.Shared.poll(Shared.java:10)
+                "waiting" #3
+                   java.lang.Thread.State: WAITING
+                    at example.Shared.poll(Shared.java:10)
+                """;
+
+        AnalysisResult result = analyzer.analyze(parser.parse("methods", dump));
+
+        assertThat(result.stackCohorts()).singleElement()
+                .satisfies(cohort -> assertThat(cohort.threads()).hasSize(3));
+        assertThat(result.methodHotspots()).singleElement().satisfies(hotspot -> {
+            assertThat(hotspot.method()).isEqualTo("at example.Shared.poll(Shared.java:10)");
+            assertThat(hotspot.threads()).extracting(thread -> thread.name())
+                    .containsExactly("runner-one", "runner-two");
+        });
     }
 
     private String sampleDump() throws IOException {
