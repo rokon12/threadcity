@@ -3,9 +3,11 @@ package ca.bazlur.threadcity.ui;
 import ca.bazlur.threadcity.ai.IncidentExplanationService;
 import ca.bazlur.threadcity.application.ThreadDumpAnalysisService;
 import ca.bazlur.threadcity.application.JfrAnalysisService;
+import ca.bazlur.threadcity.application.IncidentBundleService;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.Finding;
 import ca.bazlur.threadcity.domain.JavaThread;
+import ca.bazlur.threadcity.domain.IncidentBundle;
 import ca.bazlur.threadcity.domain.ThreadState;
 import ca.bazlur.threadcity.domain.WaitEdge;
 import ca.bazlur.threadcity.parser.ThreadDumpUploadValidator;
@@ -68,6 +70,7 @@ public class MainView extends Div {
             "Traffic flowing normally");
 
     private final ThreadDumpAnalysisService analysisService;
+    private final IncidentBundleService bundleService;
     private final boolean aiAvailable;
     private final ThreadDumpUploadValidator uploadValidator = new ThreadDumpUploadValidator();
     private final AtomicLong replayGeneration = new AtomicLong();
@@ -103,6 +106,7 @@ public class MainView extends Div {
     private final Button fixButton = new Button("Replay with the fix");
     private final Button clearButton = new Button("Clear analysis");
     private final Upload upload;
+    private final Upload bundleUpload;
     private final LockTrafficMap trafficMap;
     private final BlockerLeaderboard blockerLeaderboard;
     private final IncidentTimeMachine timeMachine;
@@ -122,8 +126,10 @@ public class MainView extends Div {
     public MainView(
             IncidentExplanationService incidentExplanationService,
             ThreadDumpAnalysisService analysisService,
-            JfrAnalysisService jfrAnalysisService) {
+            JfrAnalysisService jfrAnalysisService,
+            IncidentBundleService bundleService) {
         this.analysisService = analysisService;
+        this.bundleService = bundleService;
         aiAvailable = incidentExplanationService.isAvailable();
         evidencePanel = new ThreadEvidencePanel(
                 this::showSuccess, aiAvailable ? this::askAiAboutThread : null);
@@ -145,6 +151,7 @@ public class MainView extends Div {
                 this::showError,
                 this::navigateAiEvidence);
         upload = createUpload();
+        bundleUpload = createBundleUpload();
 
         configureActions();
         addClassName("app-shell");
@@ -206,6 +213,41 @@ public class MainView extends Div {
         return component;
     }
 
+    private Upload createBundleUpload() {
+        InMemoryUploadHandler handler = new InMemoryUploadHandler(this::handleBundleUpload) {
+            @Override
+            public long getFileSizeMax() {
+                return IncidentBundleService.MAX_BUNDLE_BYTES;
+            }
+
+            @Override
+            public long getRequestSizeMax() {
+                return IncidentBundleService.MAX_BUNDLE_BYTES + 64 * 1024L;
+            }
+
+            @Override
+            public long getFileCountMax() {
+                return 1;
+            }
+        };
+        handler.whenComplete(success -> {
+            if (!success) {
+                showError("Incident bundle upload failed. The file was not retained.");
+            }
+        });
+        Upload component = new Upload(handler);
+        component.setMaxFiles(1);
+        component.setMaxFileSize(IncidentBundleService.MAX_BUNDLE_BYTES);
+        component.setAcceptedFileTypes(".threadcity", "application/zip", "application/octet-stream");
+        component.setDropLabel(new Span("Drop a collector .threadcity bundle"));
+        Button chooseFile = new Button("Open complete incident bundle");
+        chooseFile.addThemeVariants(ButtonVariant.LUMO_CONTRAST);
+        component.setUploadButton(chooseFile);
+        component.addClassName("bundle-upload");
+        component.addFileRejectedListener(event -> showError("Choose one .threadcity bundle up to 48 MiB"));
+        return component;
+    }
+
     private void configureActions() {
         replayButton.addClickListener(event -> analyzeBuiltInIncident());
         replayButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_LARGE);
@@ -243,7 +285,16 @@ public class MainView extends Div {
         uploadFooter.addClassName("upload-footer");
         uploadCard.add(uploadFooter);
 
-        VerticalLayout content = new VerticalLayout(eyebrow, title, description, actions, hint, uploadCard);
+        Span bundleLabel = new Span("FULL INCIDENT WINDOW");
+        bundleLabel.addClassName("bundle-upload-label");
+        Div bundleCard = new Div(
+                bundleLabel,
+                new Paragraph("Open 2–5 chronological dumps plus JFR in one step."),
+                bundleUpload);
+        bundleCard.addClassNames("upload-card", "bundle-upload-card");
+
+        VerticalLayout content = new VerticalLayout(
+                eyebrow, title, description, actions, hint, uploadCard, bundleCard);
         content.setPadding(false);
         content.setSpacing(false);
         content.addClassName("hero-content");
@@ -345,6 +396,32 @@ public class MainView extends Div {
         } catch (RuntimeException exception) {
             upload.clearFileList();
             showError("ThreadCity could not analyze that file. Its content was not retained.");
+        }
+    }
+
+    private void handleBundleUpload(UploadMetadata metadata, byte[] bytes) {
+        cancelActiveReplays();
+        try {
+            IncidentBundle bundle = bundleService.read(metadata.fileName(), bytes);
+            List<AnalysisResult> snapshots = bundle.threadDumps().stream()
+                    .map(dump -> analysisService.analyze(dump.sourceName(), dump.content()))
+                    .toList();
+            AnalysisResult latest = snapshots.getLast();
+            multiDumpComparisonPanel.setSnapshots(snapshots);
+            render(latest);
+            bundle.recording().ifPresent(recording -> jfrTimelinePanel.analyze("recording.jfr", recording));
+            replayTimeline.setVisible(false);
+            revealAnalysis();
+            selectWorkbenchPage(overviewTab);
+            bundleUpload.clearFileList();
+            showSuccess("Incident window opened: " + snapshots.size()
+                    + " dumps plus JFR. The original bundle was not retained.");
+        } catch (IllegalArgumentException exception) {
+            bundleUpload.clearFileList();
+            showError(exception.getMessage());
+        } catch (RuntimeException exception) {
+            bundleUpload.clearFileList();
+            showError("ThreadCity could not open that incident bundle. Its content was not retained.");
         }
     }
 
@@ -451,6 +528,7 @@ public class MainView extends Div {
         replayButton.setEnabled(enabled);
         fixButton.setEnabled(enabled);
         upload.setEnabled(enabled);
+        bundleUpload.setEnabled(enabled);
         copilotPanel.setControlsEnabled(enabled);
         timeMachine.setControlsEnabled(enabled);
     }
@@ -625,6 +703,7 @@ public class MainView extends Div {
         multiDumpComparisonPanel.clear();
         replayTimeline.setVisible(false);
         upload.clearFileList();
+        bundleUpload.clearFileList();
         setActionsEnabled(true);
         timeMachine.reset();
         selectWorkbenchPage(overviewTab);

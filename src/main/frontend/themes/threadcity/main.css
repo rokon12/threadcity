@@ -1612,6 +1612,30 @@ body {
     margin-bottom: 0.5rem;
 }
 
+.bundle-upload-card {
+    margin-top: 0.8rem;
+    border-color: rgba(114, 167, 255, 0.22);
+    background: linear-gradient(135deg, rgba(114, 167, 255, 0.07), rgba(86, 227, 159, 0.035));
+}
+
+.bundle-upload-label {
+    display: block;
+    color: var(--tc-blue);
+    font-size: 0.62rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+}
+
+.bundle-upload-card > p {
+    margin: 0.35rem 0 0.6rem;
+    color: var(--tc-muted);
+    font-size: 0.76rem;
+}
+
+.bundle-upload {
+    width: 100%;
+}
+
 .jfr-timeline-panel > h2 {
     margin: 0;
 }

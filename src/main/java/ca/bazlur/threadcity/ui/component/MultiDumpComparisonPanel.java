@@ -78,6 +78,16 @@ public final class MultiDumpComparisonPanel extends Div {
         renderTimeline();
     }
 
+    public void setSnapshots(List<AnalysisResult> results) {
+        if (results.size() < 2 || results.size() > MAX_SNAPSHOTS) {
+            throw new IllegalArgumentException("A comparison case needs 2–5 snapshots");
+        }
+        snapshots.clear();
+        snapshots.addAll(results);
+        upload.clearFileList();
+        renderTimeline();
+    }
+
     private Upload createUpload() {
         InMemoryUploadHandler handler = new InMemoryUploadHandler(this::handleUpload) {
             @Override
