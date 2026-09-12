@@ -13,6 +13,7 @@ import ca.bazlur.threadcity.ui.component.BlockerLeaderboard;
 import ca.bazlur.threadcity.ui.component.IncidentComparisonPanel;
 import ca.bazlur.threadcity.ui.component.IncidentTimeMachine;
 import ca.bazlur.threadcity.ui.component.LockTrafficMap;
+import ca.bazlur.threadcity.ui.component.MultiDumpComparisonPanel;
 import ca.bazlur.threadcity.ui.component.SynchronizerObservatory;
 import ca.bazlur.threadcity.ui.component.ThreadEvidencePanel;
 import ca.bazlur.threadcity.ui.support.IncidentNarrative;
@@ -99,6 +100,7 @@ public class MainView extends Div {
     private final ThreadEvidencePanel evidencePanel;
     private final SynchronizerObservatory synchronizerObservatory;
     private final IncidentComparisonPanel comparisonPanel;
+    private final MultiDumpComparisonPanel multiDumpComparisonPanel;
     private final AiCopilotPanel copilotPanel;
 
     private AnalysisResult currentResult;
@@ -117,6 +119,7 @@ public class MainView extends Div {
         synchronizerObservatory = new SynchronizerObservatory(this::inspectThread, this::inspectLock);
         timeMachine = new IncidentTimeMachine(analysisService, this::inspectThread);
         comparisonPanel = new IncidentComparisonPanel(analysisService);
+        multiDumpComparisonPanel = new MultiDumpComparisonPanel(analysisService, this::showSuccess, this::showError);
         copilotPanel = new AiCopilotPanel(
                 incidentExplanationService,
                 () -> selectWorkbenchPage(copilotTab),
@@ -252,7 +255,7 @@ public class MainView extends Div {
         timelinePage.add(timeMachine, replayTimeline);
         threadsPage.add(evidencePanel);
         synchronizersPage.add(synchronizerObservatory);
-        comparePage.add(comparisonPanel);
+        comparePage.add(multiDumpComparisonPanel, comparisonPanel);
         copilotPage.add(copilotPanel);
         configureWorkbenchTabs();
 
@@ -579,6 +582,7 @@ public class MainView extends Div {
         copilotPanel.clear();
         evidencePanel.clear();
         synchronizerObservatory.clear();
+        multiDumpComparisonPanel.clear();
         replayTimeline.setVisible(false);
         upload.clearFileList();
         setActionsEnabled(true);

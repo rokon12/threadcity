@@ -1082,6 +1082,183 @@ body {
     color: var(--tc-muted);
 }
 
+.multi-dump-comparison > .eyebrow {
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+.multi-dump-comparison > h2 {
+    margin: 0;
+}
+
+.comparison-upload-zone {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    border: 1px solid var(--tc-line);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.comparison-upload {
+    min-width: 0;
+}
+
+.comparison-case-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.comparison-timeline {
+    margin-top: 1rem;
+    border: 1px solid var(--tc-line);
+    border-radius: 12px;
+    overflow-x: auto;
+    background: #0b111a;
+}
+
+.comparison-timeline vaadin-tab {
+    gap: 0.5rem;
+}
+
+.comparison-timeline vaadin-tab span:first-child {
+    display: inline-grid;
+    width: 1.65rem;
+    height: 1.65rem;
+    place-items: center;
+    border-radius: 50%;
+    color: #07110d;
+    background: var(--tc-blue);
+    font-size: 0.7rem;
+    font-weight: 900;
+}
+
+.comparison-empty {
+    display: grid;
+    min-height: 220px;
+    place-content: center;
+    justify-items: center;
+    color: var(--tc-muted);
+    text-align: center;
+}
+
+.comparison-empty vaadin-icon {
+    width: 2.2rem;
+    height: 2.2rem;
+    color: var(--tc-blue);
+}
+
+.comparison-empty h2 {
+    margin: 0.75rem 0 0;
+    color: var(--tc-ink);
+}
+
+.comparison-empty p {
+    max-width: 520px;
+}
+
+.snapshot-diff-content > h2 {
+    margin: 1.4rem 0 0.8rem;
+    font-size: 1rem;
+}
+
+.snapshot-diff-content > div:first-child {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.7rem;
+    margin: 1rem 0;
+}
+
+.snapshot-diff-metric {
+    padding: 0.85rem;
+    border: 1px solid var(--tc-line);
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.snapshot-diff-metric span {
+    display: block;
+}
+
+.snapshot-diff-metric span:first-child {
+    font-size: 1.55rem;
+    font-weight: 900;
+}
+
+.snapshot-diff-metric span:last-child {
+    margin-top: 0.3rem;
+    color: var(--tc-muted);
+    font-size: 0.62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.snapshot-diff-good span:first-child { color: var(--tc-green); }
+.snapshot-diff-waiting span:first-child { color: var(--tc-amber); }
+.snapshot-diff-critical span:first-child { color: var(--tc-red); }
+
+.snapshot-diff-split {
+    min-height: 230px;
+    border: 1px solid var(--tc-line);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.snapshot-side {
+    box-sizing: border-box;
+    min-width: 260px;
+    height: 100%;
+    padding: 1.35rem;
+    background: #0c121c;
+}
+
+.snapshot-side-label {
+    color: var(--tc-blue);
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+}
+
+.snapshot-side-state {
+    float: right;
+    font-size: 0.65rem;
+    font-weight: 900;
+    letter-spacing: 0.09em;
+}
+
+.snapshot-critical { color: var(--tc-red); }
+.snapshot-stable { color: var(--tc-green); }
+
+.snapshot-side h2 {
+    margin: 1rem 0 0.45rem;
+    font-size: 1.25rem;
+}
+
+.snapshot-side p {
+    color: var(--tc-muted);
+}
+
+.snapshot-changes-grid {
+    border: 1px solid var(--tc-line);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.thread-change-badge {
+    display: inline-block;
+    padding: 0.22rem 0.45rem;
+    border-radius: 5px;
+    color: var(--tc-muted);
+    background: rgba(255, 255, 255, 0.06);
+    font-size: 0.62rem;
+    font-weight: 850;
+}
+
+.thread-change-warning { color: var(--tc-amber); background: rgba(255, 200, 87, 0.12); }
+.thread-change-good { color: var(--tc-green); background: rgba(86, 227, 159, 0.10); }
+
 .comparison-split {
     min-height: 390px;
     margin: 1rem 0;
@@ -1279,6 +1456,9 @@ body {
     .filter-bar > * { width: 100%; }
     .traffic-canvas { min-height: 330px; overflow-x: auto; }
     .map-node { width: 180px; }
+    .comparison-upload-zone { grid-template-columns: 1fr; }
+    .comparison-case-actions { justify-content: flex-start; }
+    .snapshot-diff-content > div:first-child { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 600px) {
