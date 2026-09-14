@@ -171,7 +171,8 @@ public final class LockTrafficMap extends Div {
             double length = Math.max(1, Math.hypot(dx, dy));
             double ux = dx / length;
             double uy = dy / length;
-            double offset = hasReverseEdge(edges, edge) ? 18 : 0;
+            boolean reverseEdge = hasReverseEdge(edges, edge);
+            double offset = reverseEdge ? 18 : 0;
             double px = -uy * offset;
             double py = ux * offset;
             boolean critical = criticalThreadIds.contains(edge.waiter().id());
@@ -191,7 +192,10 @@ public final class LockTrafficMap extends Div {
 
             Element label = new Element("text");
             label.setAttribute("x", decimal((from.x() + to.x()) / 2 + px));
-            label.setAttribute("y", decimal((from.y() + to.y()) / 2 + py - 8));
+            double labelY = reverseEdge
+                    ? (from.y() + to.y()) / 2 + Math.copySign(44, py)
+                    : (from.y() + to.y()) / 2 + py - 8;
+            label.setAttribute("y", decimal(labelY));
             label.setAttribute("text-anchor", "middle");
             label.getClassList().add("map-edge-label");
             if (highlighted) {

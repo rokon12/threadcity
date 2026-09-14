@@ -10,14 +10,20 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.sidenav.SideNav;
 import com.vaadin.flow.component.sidenav.SideNavItem;
+import com.vaadin.flow.shared.Registration;
 
 public class MainLayout extends AppLayout {
+
+    private static final int COMPACT_DRAWER_BREAKPOINT = 1_024;
+
+    private Registration resizeRegistration;
 
     public MainLayout() {
         addClassName("main-layout");
         setPrimarySection(Section.DRAWER);
         buildNavbar();
         buildDrawer();
+        registerResponsiveDrawer();
     }
 
     private void buildNavbar() {
@@ -47,10 +53,15 @@ public class MainLayout extends AppLayout {
                 "Parse, replay, compare, investigate, and explain one production snapshot without leaving Java.");
 
         SideNav navigation = new SideNav("Workbench");
-        navigation.addItem(
-                new SideNavItem("Incident workbench", MainView.class, VaadinIcon.DASHBOARD.create()),
-                new SideNavItem("Example thread dump", "/examples/jstack.txt", VaadinIcon.DOWNLOAD.create()));
-        navigation.getItems().getLast().setOpenInNewBrowserTab(true);
+        SideNavItem workbench = new SideNavItem(
+                "Incident workbench", MainView.class, VaadinIcon.DASHBOARD.create());
+        SideNavItem threadDump = new SideNavItem(
+                "Example thread dump", "/examples/jstack.txt", VaadinIcon.DOWNLOAD.create());
+        SideNavItem jfrRecording = new SideNavItem(
+                "Example JFR recording", "/examples/threadcity-demo.jfr", VaadinIcon.CLOCK.create());
+        threadDump.setOpenInNewBrowserTab(true);
+        jfrRecording.setOpenInNewBrowserTab(true);
+        navigation.addItem(workbench, threadDump, jfrRecording);
 
         Div componentProof = new Div();
         componentProof.addClassName("component-proof");
@@ -62,6 +73,28 @@ public class MainLayout extends AppLayout {
         drawer.setPadding(false);
         drawer.setSpacing(false);
         addToDrawer(drawer);
+    }
+
+    private void registerResponsiveDrawer() {
+        addAttachListener(event -> {
+            var page = event.getUI().getPage();
+            page.retrieveExtendedClientDetails(
+                    details -> closeDrawerOnCompactViewport(details.getWindowInnerWidth()));
+            resizeRegistration = page.addBrowserWindowResizeListener(
+                    resize -> closeDrawerOnCompactViewport(resize.getWidth()));
+        });
+        addDetachListener(event -> {
+            if (resizeRegistration != null) {
+                resizeRegistration.remove();
+                resizeRegistration = null;
+            }
+        });
+    }
+
+    private void closeDrawerOnCompactViewport(int width) {
+        if (width <= COMPACT_DRAWER_BREAKPOINT) {
+            setDrawerOpened(false);
+        }
     }
 
     private static final class ParagraphCopy extends Span {

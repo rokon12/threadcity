@@ -126,6 +126,27 @@ body {
     padding: 0 3rem 5rem;
 }
 
+.app-footer {
+    box-sizing: border-box;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.5rem;
+    margin-top: 2rem;
+    padding: 1.15rem 0;
+    border-top: 1px solid var(--tc-line);
+    color: var(--tc-muted);
+    font-size: 0.78rem;
+}
+
+.app-footer a {
+    color: #9fc2ff;
+    font-weight: 800;
+    text-decoration: none;
+}
+
+.app-footer a:hover {
+    text-decoration: underline;
+}
+
 .top-nav {
     box-sizing: border-box;
     min-height: 76px;
@@ -334,6 +355,11 @@ body {
     overflow: hidden;
     background: rgba(9, 13, 20, 0.94);
     backdrop-filter: blur(16px);
+}
+
+.workbench-tabs vaadin-tab {
+    flex: 0 0 auto;
+    min-width: max-content;
 }
 
 .workbench-pages {
@@ -1486,6 +1512,19 @@ body {
     font-size: 0.78rem;
 }
 
+.copilot-byok {
+    padding: 0.85rem 1rem;
+    border: 1px solid rgba(114, 167, 255, 0.28);
+    border-radius: 12px;
+    background: rgba(114, 167, 255, 0.07);
+    line-height: 1.55;
+}
+
+.copilot-byok a {
+    color: #9fc2ff;
+    font-weight: 800;
+}
+
 .copilot-session-bar {
     min-height: 36px;
     flex-wrap: wrap;
@@ -1663,9 +1702,58 @@ body {
     box-shadow: 0 0 28px rgba(86, 227, 159, 0.16);
 }
 
+.judge-coach {
+    position: fixed;
+    z-index: 1000;
+    right: clamp(1rem, 2vw, 2rem);
+    bottom: clamp(1rem, 2vw, 2rem);
+    box-sizing: border-box;
+    width: min(380px, calc(100vw - 2rem));
+    max-height: calc(100dvh - 96px);
+    padding: 0.85rem;
+    overflow: auto;
+    border: 1px solid rgba(114, 167, 255, 0.35);
+    border-radius: 18px;
+    background: rgba(11, 17, 26, 0.97);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 0 36px rgba(114, 167, 255, 0.12);
+    backdrop-filter: blur(20px);
+}
+
+.judge-coach[data-collapsed="true"] {
+    width: min(310px, calc(100vw - 2rem));
+}
+
+.judge-coach-header,
+.judge-coach-header-actions {
+    width: 100%;
+    gap: 0.35rem;
+}
+
+.judge-coach-brand {
+    display: inline-flex;
+    gap: 0.45rem;
+    align-items: center;
+    color: var(--tc-green);
+    font-size: 0.66rem;
+    font-weight: 900;
+    letter-spacing: 0.11em;
+}
+
+.judge-coach-brand vaadin-icon {
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
+.judge-coach-count {
+    color: var(--tc-muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.68rem;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
 .judge-content {
-    min-height: 290px;
-    padding: 1rem 0.25rem 0.5rem;
+    padding: 0.8rem 0.2rem 0.35rem;
 }
 
 .judge-step-label {
@@ -1676,20 +1764,21 @@ body {
 }
 
 .judge-content h2 {
-    margin: 0.55rem 0;
-    font-size: 1.7rem;
+    margin: 0.4rem 0;
+    font-size: 1.35rem;
 }
 
 .judge-description {
+    margin: 0;
     color: #d5dfea;
-    font-size: 0.92rem;
-    line-height: 1.65;
+    font-size: 0.84rem;
+    line-height: 1.5;
 }
 
 .judge-proof {
     display: block;
-    margin: 1rem 0;
-    padding: 0.75rem;
+    margin: 0.7rem 0;
+    padding: 0.6rem;
     border: 1px solid var(--tc-line);
     border-radius: 9px;
     color: var(--tc-blue);
@@ -1705,6 +1794,7 @@ body {
 .judge-controls {
     width: 100%;
     flex-wrap: wrap;
+    gap: 0.35rem;
 }
 
 .jfr-timeline-panel > h2 {
@@ -1720,6 +1810,11 @@ body {
 
 .jfr-upload {
     width: 100%;
+}
+
+.jfr-upload-card > .example-download {
+    display: inline-block;
+    margin-top: 0.55rem;
 }
 
 .jfr-empty {
@@ -2020,8 +2115,9 @@ body {
 @media (max-width: 900px) {
     .app-shell { padding: 0 1.2rem 3rem; }
     .privacy-note { display: none; }
-    .hero { grid-template-columns: 1fr; gap: 2rem; padding: 4rem 0; }
-    .hero h1 { font-size: clamp(3.2rem, 14vw, 5.4rem); }
+    .hero { grid-template-columns: 1fr; min-height: auto; gap: 2rem; padding: 3rem 0; }
+    .hero h1 { font-size: clamp(2.8rem, 10vw, 4.5rem); }
+    .hero-copy { margin: 1.25rem 0 1.5rem; font-size: 1.05rem; line-height: 1.55; }
     .signal-art { min-height: 270px; }
     .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .detail-grid { grid-template-columns: 1fr; }
@@ -2030,13 +2126,15 @@ body {
     .incident-status { align-items: flex-start; flex-direction: column; }
     .status-actions { flex-wrap: wrap; }
     .timeline-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .workbench-tabs { overflow-x: auto; }
+    .workbench-tabs { overflow-x: auto; overscroll-behavior-inline: contain; }
+    .workbench-tabs vaadin-tab { padding-inline: 0.85rem; }
     .time-machine-moment { align-items: flex-start; flex-direction: column; }
     .comparison-split { min-height: 540px; }
     .filter-bar { align-items: stretch; flex-direction: column; }
     .filter-bar > * { width: 100%; }
     .traffic-canvas { min-height: 330px; overflow-x: auto; }
-    .map-node { width: 180px; }
+    .map-node { width: 165px; }
+    .map-edge-label { font-size: 11px; }
     .comparison-upload-zone { grid-template-columns: 1fr; }
     .comparison-case-actions { justify-content: flex-start; }
     .snapshot-diff-content > div:first-child { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -2047,6 +2145,18 @@ body {
     .jfr-analysis-content > div:first-child { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .jfr-filter-bar { align-items: stretch; flex-direction: column; }
     .jfr-filter-bar > * { width: 100%; }
+    .judge-coach { right: 0.75rem; bottom: 0.75rem; width: min(360px, calc(100vw - 1.5rem)); }
+}
+
+@media (min-width: 720px) and (max-width: 900px) {
+    .hero {
+        grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.8fr);
+        gap: 1.5rem;
+        align-items: start;
+    }
+
+    .hero h1 { font-size: clamp(3rem, 7.5vw, 4.2rem); }
+    .signal-art { margin-top: 1rem; min-height: 310px; }
 }
 
 @media (max-width: 600px) {
@@ -2055,6 +2165,13 @@ body {
     .app-shell { padding: 0 0.8rem 2.5rem; }
     .workbench-tabs { top: 58px; }
     .comparison-metrics { grid-template-columns: 1fr; }
+    .judge-coach {
+        right: 0.5rem;
+        bottom: 0.5rem;
+        width: calc(100vw - 1rem);
+        max-height: min(52dvh, 430px);
+        border-radius: 14px;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {

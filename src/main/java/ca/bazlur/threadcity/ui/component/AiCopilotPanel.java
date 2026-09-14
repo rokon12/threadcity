@@ -3,10 +3,12 @@ package ca.bazlur.threadcity.ui.component;
 import ca.bazlur.threadcity.ai.IncidentConversationTurn;
 import ca.bazlur.threadcity.ai.IncidentExplanationRequest;
 import ca.bazlur.threadcity.ai.IncidentExplanationService;
+import ca.bazlur.threadcity.ai.AiUsageLimitException;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.ui.support.AiEvidenceReference;
 import ca.bazlur.threadcity.ui.support.AiEvidenceResolver;
 import com.vaadin.flow.component.UI;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog;
@@ -118,7 +120,11 @@ public final class AiCopilotPanel extends Div {
 
         input.addClassName("copilot-input");
         input.setWidthFull();
-        input.getElement().setProperty("placeholder", "Ask why a thread is blocked or how to verify the fix…");
+        input.getElement().setProperty(
+                "placeholder",
+                explanationService.isAvailable()
+                        ? "Ask why a thread is blocked or how to verify the fix…"
+                        : "Clone ThreadCity and configure your own API key to enable AI…");
         input.addSubmitListener(event -> request(event.getValue()));
 
         stop.addClickListener(event -> cancelActiveRequest(true));
@@ -134,9 +140,9 @@ public final class AiCopilotPanel extends Div {
     }
 
     private void buildLayout() {
-        Span disclosure = new Span(
-                "Opt-in: questions and bounded derived evidence go to OpenAI. Raw thread dumps are never sent.");
-        disclosure.addClassName("copilot-disclosure");
+        Div disclosure = explanationService.isAvailable()
+                ? configuredDisclosure()
+                : localByokDisclosure();
         memoryStatus.getElement().getThemeList().add("badge contrast");
         memoryStatus.getElement().setAttribute("aria-live", "polite");
         streamStatus.addClassName("copilot-stream-status");
@@ -150,13 +156,32 @@ public final class AiCopilotPanel extends Div {
         addClassNames("panel", "copilot-panel");
     }
 
+    private Div configuredDisclosure() {
+        Div disclosure = new Div(new Span("Opt-in: questions and bounded derived evidence go to "
+                + explanationService.providerName() + ". Raw thread dumps are never sent."));
+        disclosure.addClassName("copilot-disclosure");
+        return disclosure;
+    }
+
+    private Div localByokDisclosure() {
+        Span message = new Span("AI is currently unavailable in this demo. ");
+        Anchor source = new Anchor(
+                "https://github.com/rokon12/threadcity",
+                "Clone ThreadCity and use your own API key");
+        source.setTarget("_blank");
+        source.getElement().setAttribute("rel", "noopener noreferrer");
+        Div disclosure = new Div(message, source);
+        disclosure.addClassNames("copilot-disclosure", "copilot-byok");
+        return disclosure;
+    }
+
     private void request(String question) {
         if (busy) {
             errorNotifier.accept("The copilot is already answering. Stop that response before asking another question.");
             return;
         }
         if (result == null || !explanationService.isAvailable() || question == null || question.isBlank()) {
-            errorNotifier.accept("AI explanations are not configured for this deployment.");
+            errorNotifier.accept("AI explanations are not available for this deployment.");
             return;
         }
         if (consentGranted) {
@@ -167,7 +192,8 @@ public final class AiCopilotPanel extends Div {
         ConfirmDialog dialog = new ConfirmDialog();
         dialog.setHeader("Open the AI incident copilot?");
         dialog.setText("ThreadCity will send thread names, states, confirmed lock relationships, findings, "
-                + "representative top stack frames, and your questions to OpenAI through LangChain4j. "
+                + "representative top stack frames, and your questions to "
+                + explanationService.providerName() + " through LangChain4j. "
                 + "The raw dump is not sent. This consent applies to the current analyzed snapshot.");
         dialog.setConfirmText("Open copilot");
         dialog.setCancelText("Cancel");
@@ -207,9 +233,9 @@ public final class AiCopilotPanel extends Div {
                     question,
                     partial -> streamPartial(generation, request, ui, firstChunk, partial),
                     explanation -> completeStream(generation, request, ui, requestedResult, question, explanation),
-                    exception -> failStream(generation, request, ui, requestedResult));
+                    exception -> failStream(generation, request, ui, requestedResult, exception));
         } catch (RuntimeException exception) {
-            failStream(generation, request, ui, requestedResult);
+            failStream(generation, request, ui, requestedResult, exception);
         }
     }
 
@@ -265,7 +291,8 @@ public final class AiCopilotPanel extends Div {
             long generation,
             long request,
             UI ui,
-            AnalysisResult requestedResult) {
+            AnalysisResult requestedResult,
+            Throwable failure) {
         if (isStale(generation, request, ui)) {
             return;
         }
@@ -273,14 +300,24 @@ public final class AiCopilotPanel extends Div {
             if (!isCurrent(generation, request) || result != requestedResult) {
                 return;
             }
-            activeResponseItem.setText(
-                    "I couldn't reach the AI provider. The deterministic evidence and deadlock result are unchanged.");
+            String message = userFacingFailure(failure);
+            activeResponseItem.setText(message);
             activeRequest = null;
             activeResponseItem = null;
             setBusy(false);
-            errorNotifier.accept(
-                    "The AI incident brief is temporarily unavailable. The deterministic analysis is unchanged.");
+            errorNotifier.accept(message);
         });
+    }
+
+    private static String userFacingFailure(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof AiUsageLimitException limitException) {
+                return limitException.userMessage();
+            }
+            current = current.getCause();
+        }
+        return "The AI incident brief is temporarily unavailable. The deterministic analysis is unchanged.";
     }
 
     private boolean isStale(long generation, long request, UI ui) {
@@ -326,14 +363,14 @@ public final class AiCopilotPanel extends Div {
         evidenceLinks.setVisible(false);
         String introduction = explanationService.isAvailable()
                 ? "Select Explain with AI or ask a question. I will answer from ThreadCity's deterministic evidence and clearly mark AI-generated guidance."
-                : "AI is not configured in this deployment. Add OPENAI_API_KEY to enable this Vaadin message workspace; every deterministic investigation tool remains available.";
+                : "This public demo intentionally makes no AI provider calls. Clone the project, set your own API key locally, and the same workspace becomes a conversational LangChain4j incident copilot. Every deterministic investigation tool remains available here.";
         addMessage(introduction, "ThreadCity", 5);
         refreshMemoryStatus();
         action.setText("✦ Explain with AI");
         progress.setVisible(false);
         stop.setVisible(false);
         regenerate.setVisible(false);
-        streamStatus.setText("Ready");
+        streamStatus.setText(explanationService.isAvailable() ? "Ready" : "Local BYOK");
     }
 
     private void refreshMemoryStatus() {

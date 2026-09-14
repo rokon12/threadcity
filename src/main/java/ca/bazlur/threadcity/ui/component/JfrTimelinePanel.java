@@ -12,6 +12,7 @@ import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.grid.Grid;
 import com.vaadin.flow.component.grid.GridVariant;
+import com.vaadin.flow.component.html.Anchor;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
@@ -238,7 +239,11 @@ public final class JfrTimelinePanel extends Div {
                 "Correlate monitor, park, CPU, I/O, GC, and virtual-thread events with the current dump."
                         + " Recordings are bounded, processed once, and deleted from temporary storage.");
         help.addClassName("panel-help");
-        Div uploadCard = new Div(upload);
+        Anchor exampleDownload = new Anchor(
+                "/examples/threadcity-demo.jfr", "Download example threadcity-demo.jfr");
+        exampleDownload.getElement().setAttribute("download", "threadcity-demo.jfr");
+        exampleDownload.addClassName("example-download");
+        Div uploadCard = new Div(upload, exampleDownload);
         uploadCard.addClassName("jfr-upload-card");
 
         emptyState.add(

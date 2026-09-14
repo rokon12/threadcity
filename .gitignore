@@ -1,6 +1,7 @@
 target/
 node_modules/
 work/
+.deploy/
 
 .DS_Store
 .idea/

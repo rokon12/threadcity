@@ -1,9 +1,9 @@
 package ca.bazlur.threadcity.ui.component;
 
+import com.vaadin.flow.component.DetachEvent;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
-import com.vaadin.flow.component.dialog.Dialog;
 import com.vaadin.flow.component.html.Div;
 import com.vaadin.flow.component.html.H2;
 import com.vaadin.flow.component.html.Paragraph;
@@ -17,9 +17,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntConsumer;
 
 /**
- * A guided, push-powered walkthrough that makes the evidence story easy to judge in minutes.
+ * A non-modal guided walkthrough that keeps the evidence visible and interactive.
  */
-public final class JudgeModeDialog {
+public final class JudgeModeCoach extends Div {
 
     private static final List<Step> STEPS = List.of(
             new Step("01 · DETECT", "See the gridlock",
@@ -45,7 +45,7 @@ public final class JudgeModeDialog {
                     "Vaadin DownloadHandler · escaped evidence · offline HTML"));
 
     private final IntConsumer stepNavigator;
-    private final Dialog dialog = new Dialog();
+    private final Span stepCounter = new Span();
     private final Span stepLabel = new Span();
     private final H2 title = new H2();
     private final Paragraph description = new Paragraph();
@@ -54,10 +54,14 @@ public final class JudgeModeDialog {
     private final Button back = new Button("Back", VaadinIcon.ARROW_LEFT.create());
     private final Button next = new Button("Next", VaadinIcon.ARROW_RIGHT.create());
     private final Button autoplay = new Button("Auto-play", VaadinIcon.PLAY.create());
+    private final Button collapse = new Button(VaadinIcon.CHEVRON_DOWN_SMALL.create());
+    private final Div content = new Div();
+    private final HorizontalLayout controls = new HorizontalLayout();
     private final AtomicLong playbackGeneration = new AtomicLong();
     private int index;
+    private boolean collapsed;
 
-    public JudgeModeDialog(IntConsumer stepNavigator) {
+    public JudgeModeCoach(IntConsumer stepNavigator) {
         this.stepNavigator = stepNavigator;
         configure();
     }
@@ -66,58 +70,92 @@ public final class JudgeModeDialog {
         playbackGeneration.incrementAndGet();
         autoplay.setText("Auto-play");
         autoplay.setEnabled(true);
+        setCollapsed(false);
+        setVisible(true);
         showStep(0);
-        dialog.open();
+    }
+
+    public void close() {
+        playbackGeneration.incrementAndGet();
+        autoplay.setEnabled(true);
+        autoplay.setText("Auto-play");
+        setVisible(false);
     }
 
     private void configure() {
-        dialog.setHeaderTitle("ThreadCity judge mode");
-        dialog.setWidth("min(94vw, 660px)");
-        dialog.setCloseOnEsc(true);
-        dialog.setCloseOnOutsideClick(false);
-        dialog.addClassName("judge-dialog");
-        dialog.addOpenedChangeListener(event -> {
-            if (!event.isOpened()) {
-                playbackGeneration.incrementAndGet();
-                autoplay.setEnabled(true);
-                autoplay.setText("Auto-play");
-            }
-        });
+        addClassName("judge-coach");
+        setVisible(false);
+        getElement().setAttribute("role", "region");
+        getElement().setAttribute("aria-label", "ThreadCity judge mode");
+
+        Span brand = new Span(VaadinIcon.STAR.create(), new Span("JUDGE MODE"));
+        brand.addClassName("judge-coach-brand");
+        stepCounter.addClassName("judge-coach-count");
+
+        collapse.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_ICON);
+        collapse.setAriaLabel("Collapse judge mode");
+        collapse.addClickListener(event -> setCollapsed(!collapsed));
+        Button close = new Button(VaadinIcon.CLOSE_SMALL.create(), event -> close());
+        close.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE, ButtonVariant.LUMO_ICON);
+        close.setAriaLabel("Close judge mode");
+
+        HorizontalLayout headerActions = new HorizontalLayout(stepCounter, collapse, close);
+        headerActions.addClassName("judge-coach-header-actions");
+        headerActions.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        HorizontalLayout header = new HorizontalLayout(brand, headerActions);
+        header.addClassName("judge-coach-header");
+        header.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        header.expand(brand);
 
         stepLabel.addClassName("judge-step-label");
         description.addClassName("judge-description");
         proof.addClassName("judge-proof");
         progress.addClassName("judge-progress");
         progress.setWidthFull();
-        Div content = new Div(stepLabel, title, description, proof, progress);
+        content.add(stepLabel, title, description, proof, progress);
         content.addClassName("judge-content");
-        dialog.add(content);
+        content.getElement().setAttribute("aria-live", "polite");
 
         back.addClickListener(event -> showStep(index - 1));
         back.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-        next.addClickListener(event -> showStep(index + 1));
+        next.addClickListener(event -> {
+            if (index + 1 < STEPS.size()) {
+                showStep(index + 1);
+            } else {
+                close();
+            }
+        });
         next.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         autoplay.addClickListener(event -> autoPlay());
         autoplay.addThemeVariants(ButtonVariant.LUMO_CONTRAST);
-        Button close = new Button("Close", event -> dialog.close());
-        close.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
-        HorizontalLayout controls = new HorizontalLayout(back, next, autoplay, close);
+        controls.add(back, next, autoplay);
         controls.addClassName("judge-controls");
-        dialog.getFooter().add(controls);
+
+        add(header, content, controls);
     }
 
     private void showStep(int requested) {
         index = Math.max(0, Math.min(requested, STEPS.size() - 1));
         Step step = STEPS.get(index);
+        stepCounter.setText((index + 1) + " / " + STEPS.size());
         stepLabel.setText(step.label());
         title.setText(step.title());
         description.setText(step.description());
         proof.setText(step.proof());
         progress.setValue(index + 1);
         back.setEnabled(index > 0);
-        next.setEnabled(index + 1 < STEPS.size());
-        next.setText(index + 1 < STEPS.size() ? "Next" : "Tour complete");
+        next.setText(index + 1 < STEPS.size() ? "Next" : "Finish");
         stepNavigator.accept(index);
+    }
+
+    private void setCollapsed(boolean collapsed) {
+        this.collapsed = collapsed;
+        content.setVisible(!collapsed);
+        controls.setVisible(!collapsed);
+        collapse.setIcon((collapsed ? VaadinIcon.CHEVRON_UP_SMALL : VaadinIcon.CHEVRON_DOWN_SMALL).create());
+        collapse.setAriaLabel(collapsed ? "Expand judge mode" : "Collapse judge mode");
+        collapse.getElement().setAttribute("aria-expanded", String.valueOf(!collapsed));
+        getElement().setAttribute("data-collapsed", String.valueOf(collapsed));
     }
 
     private void autoPlay() {
@@ -146,6 +184,12 @@ public final class JudgeModeDialog {
                 });
             }
         });
+    }
+
+    @Override
+    protected void onDetach(DetachEvent detachEvent) {
+        playbackGeneration.incrementAndGet();
+        super.onDetach(detachEvent);
     }
 
     private record Step(String label, String title, String description, String proof) {

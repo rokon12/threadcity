@@ -12,6 +12,10 @@ public interface IncidentExplanationService {
 
     boolean isAvailable();
 
+    default String providerName() {
+        return "AI provider";
+    }
+
     default String explain(AnalysisResult result) {
         return explain(result, List.of(), "Explain this incident and recommend the safest next steps.");
     }

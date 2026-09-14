@@ -20,19 +20,33 @@ final class LangChainIncidentExplanationService implements IncidentExplanationSe
 
     private final ChatModel chatModel;
     private final StreamingChatModel streamingChatModel;
+    private final String providerName;
 
     LangChainIncidentExplanationService(ChatModel chatModel) {
-        this(chatModel, null);
+        this(chatModel, null, "AI provider");
     }
 
     LangChainIncidentExplanationService(ChatModel chatModel, StreamingChatModel streamingChatModel) {
+        this(chatModel, streamingChatModel, "AI provider");
+    }
+
+    LangChainIncidentExplanationService(
+            ChatModel chatModel,
+            StreamingChatModel streamingChatModel,
+            String providerName) {
         this.chatModel = Objects.requireNonNull(chatModel, "chatModel");
         this.streamingChatModel = streamingChatModel;
+        this.providerName = Objects.requireNonNull(providerName, "providerName");
     }
 
     @Override
     public boolean isAvailable() {
         return true;
+    }
+
+    @Override
+    public String providerName() {
+        return providerName;
     }
 
     @Override

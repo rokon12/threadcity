@@ -21,7 +21,7 @@ import ca.bazlur.threadcity.ui.component.LockTrafficMap;
 import ca.bazlur.threadcity.ui.component.MultiDumpComparisonPanel;
 import ca.bazlur.threadcity.ui.component.ParserConfidencePanel;
 import ca.bazlur.threadcity.ui.component.JfrTimelinePanel;
-import ca.bazlur.threadcity.ui.component.JudgeModeDialog;
+import ca.bazlur.threadcity.ui.component.JudgeModeCoach;
 import ca.bazlur.threadcity.ui.component.SynchronizerObservatory;
 import ca.bazlur.threadcity.ui.component.StackCohortExplorer;
 import ca.bazlur.threadcity.ui.component.ThreadEvidencePanel;
@@ -44,7 +44,6 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
 import com.vaadin.flow.component.tabs.Tabs;
-import com.vaadin.flow.component.tabs.TabsVariant;
 import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
@@ -127,7 +126,7 @@ public class MainView extends Div {
     private final IncidentComparisonPanel comparisonPanel;
     private final MultiDumpComparisonPanel multiDumpComparisonPanel;
     private final AiCopilotPanel copilotPanel;
-    private final JudgeModeDialog judgeModeDialog;
+    private final JudgeModeCoach judgeModeCoach;
 
     private AnalysisResult currentResult;
     private Registration resizeRegistration;
@@ -164,12 +163,27 @@ public class MainView extends Div {
         upload = createUpload();
         bundleUpload = createBundleUpload();
         reportDownload = createReportDownload();
-        judgeModeDialog = new JudgeModeDialog(this::navigateJudgeMode);
+        judgeModeCoach = new JudgeModeCoach(this::navigateJudgeMode);
 
         configureActions();
         addClassName("app-shell");
-        add(buildHero(), buildAnalysisSection());
+        add(buildHero(), buildAnalysisSection(), buildFooter(), judgeModeCoach);
         registerLifecycleListeners();
+    }
+
+    private Component buildFooter() {
+        Span message = new Span("Built with Vaadin Flow for the Vaadin community");
+        Anchor source = new Anchor("https://github.com/rokon12/threadcity", "View source on GitHub");
+        source.setTarget("_blank");
+        source.getElement().setAttribute("rel", "noopener noreferrer");
+        source.getElement().setAttribute("aria-label", "View ThreadCity source code on GitHub (opens in a new tab)");
+
+        HorizontalLayout footer = new HorizontalLayout(message, source);
+        footer.addClassName("app-footer");
+        footer.setAlignItems(HorizontalLayout.Alignment.CENTER);
+        footer.setJustifyContentMode(HorizontalLayout.JustifyContentMode.BETWEEN);
+        footer.setWidthFull();
+        return footer;
     }
 
     private void registerLifecycleListeners() {
@@ -290,7 +304,7 @@ public class MainView extends Div {
         clearButton.addClickListener(event -> clearAnalysis());
         clearButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
 
-        judgeModeButton.addClickListener(event -> judgeModeDialog.open());
+        judgeModeButton.addClickListener(event -> judgeModeCoach.open());
         judgeModeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_LARGE);
         judgeModeButton.addClassName("judge-mode-button");
     }
@@ -385,7 +399,6 @@ public class MainView extends Div {
     private void configureWorkbenchTabs() {
         workbenchTabs.add(
                 overviewTab, timelineTab, threadsTab, synchronizersTab, cohortsTab, jfrTab, compareTab, copilotTab);
-        workbenchTabs.addThemeVariants(TabsVariant.LUMO_EQUAL_WIDTH_TABS);
         workbenchTabs.addClassName("workbench-tabs");
         workbenchTabs.setWidthFull();
 
@@ -570,7 +583,8 @@ public class MainView extends Div {
     }
 
     private void navigateJudgeMode(int step) {
-        if (currentResult == null) {
+        if (requiresJudgeIncident(step, currentResult)) {
+            cancelActiveReplays();
             render(analysisService.analyzeSample("Judge tour · checkout deadlock", "deadlock.txt"));
             replayTimeline.setVisible(false);
             revealAnalysis();
@@ -608,6 +622,10 @@ public class MainView extends Div {
             }
             default -> throw new IllegalArgumentException("Unknown judge-mode step: " + step);
         }
+    }
+
+    static boolean requiresJudgeIncident(int step, AnalysisResult currentResult) {
+        return step == 0 || currentResult == null;
     }
 
     private void revealAnalysis() {
@@ -770,6 +788,7 @@ public class MainView extends Div {
 
     private void clearAnalysis() {
         cancelActiveReplays();
+        judgeModeCoach.close();
         currentResult = null;
         reportDownload.setEnabled(false);
         copilotPanel.clear();

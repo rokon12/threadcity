@@ -64,6 +64,20 @@ class JfrAnalysisServiceTest {
     }
 
     @Test
+    void readsTheBundledFailureLabRecording() throws Exception {
+        try (var input = getClass().getResourceAsStream("/static/examples/threadcity-demo.jfr")) {
+            assertThat(input).isNotNull();
+
+            JfrAnalysis analysis = service.analyze("threadcity-demo.jfr", input.readAllBytes());
+
+            assertThat(analysis.recordingDuration()).isGreaterThanOrEqualTo(java.time.Duration.ofSeconds(9));
+            assertThat(analysis.relevantEvents()).isGreaterThan(100);
+            assertThat(analysis.samples()).anyMatch(sample ->
+                    sample.eventType().equals("threadcity.lab.PressurePulse"));
+        }
+    }
+
+    @Test
     void rejectsNonJfrInputBeforeInvokingTheJdkParser() {
         assertThatThrownBy(() -> service.analyze("fake.jfr", "not-jfr".getBytes()))
                 .isInstanceOf(IllegalArgumentException.class)
