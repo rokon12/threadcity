@@ -24,12 +24,14 @@ import java.util.function.Consumer;
  */
 public final class BlockerLeaderboard extends Div {
 
-    private final Consumer<String> inspectThread;
+    private static final int MAX_ROOTS = 50;
+    private static final int MAX_TREE_NODES_PER_ROOT = 200;
+    private final Consumer<JavaThread> inspectThread;
     private final TreeGrid<BlockerRow> grid = new TreeGrid<>();
     private final Paragraph summary = new Paragraph();
     private final Div emptyState = new Div(new Span("✓"), new Span("No ownership-dependent blockers"));
 
-    public BlockerLeaderboard(Consumer<String> inspectThread) {
+    public BlockerLeaderboard(Consumer<JavaThread> inspectThread) {
         this.inspectThread = inspectThread;
         configureGrid();
         emptyState.addClassName("blocker-empty");
@@ -71,7 +73,7 @@ public final class BlockerLeaderboard extends Div {
         grid.asSingleSelect().addValueChangeListener(event -> {
             BlockerRow row = event.getValue();
             if (row != null) {
-                inspectThread.accept(row.thread().name());
+                inspectThread.accept(row.thread());
             }
         });
     }
@@ -92,6 +94,7 @@ public final class BlockerLeaderboard extends Div {
                 .add(edge));
 
         return result.blockingImpacts().stream()
+                .limit(MAX_ROOTS)
                 .map(impact -> new BlockerRow(
                         impact.blocker(),
                         impact.directlyBlocked(),
@@ -99,7 +102,12 @@ public final class BlockerLeaderboard extends Div {
                         "Owns locks needed downstream",
                         "—",
                         true,
-                        childrenOf(impact.blocker(), incoming, impacts, new HashSet<>(Set.of(impact.blocker().id())))))
+                        childrenOf(
+                                impact.blocker(),
+                                incoming,
+                                impacts,
+                                new HashSet<>(Set.of(impact.blocker().id())),
+                                new int[]{1})))
                 .toList();
     }
 
@@ -107,9 +115,12 @@ public final class BlockerLeaderboard extends Div {
             JavaThread owner,
             Map<Integer, List<WaitEdge>> incoming,
             Map<Integer, BlockingImpact> impacts,
-            Set<Integer> path) {
+            Set<Integer> path,
+            int[] emittedNodes) {
         return incoming.getOrDefault(owner.id(), List.of()).stream()
+                .takeWhile(ignored -> emittedNodes[0] < MAX_TREE_NODES_PER_ROOT)
                 .map(edge -> {
+                    emittedNodes[0]++;
                     JavaThread waiter = edge.waiter();
                     BlockingImpact impact = impacts.get(waiter.id());
                     boolean closesCycle = path.contains(waiter.id());
@@ -122,7 +133,9 @@ public final class BlockerLeaderboard extends Div {
                             closesCycle ? "Cycle closes here" : "Waits for " + owner.name(),
                             edge.lock().shortId(),
                             false,
-                            closesCycle ? List.of() : childrenOf(waiter, incoming, impacts, nextPath));
+                            closesCycle || emittedNodes[0] >= MAX_TREE_NODES_PER_ROOT
+                                    ? List.of()
+                                    : childrenOf(waiter, incoming, impacts, nextPath, emittedNodes));
                 })
                 .toList();
     }

@@ -78,7 +78,7 @@ public class MainLayout extends AppLayout {
     private void registerResponsiveDrawer() {
         addAttachListener(event -> {
             var page = event.getUI().getPage();
-            page.retrieveExtendedClientDetails(
+            page.getExtendedClientDetails().refresh(
                     details -> closeDrawerOnCompactViewport(details.getWindowInnerWidth()));
             resizeRegistration = page.addBrowserWindowResizeListener(
                     resize -> closeDrawerOnCompactViewport(resize.getWidth()));

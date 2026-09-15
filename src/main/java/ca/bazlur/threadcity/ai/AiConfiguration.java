@@ -4,7 +4,7 @@ import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -14,7 +14,13 @@ import java.time.Duration;
 import java.util.Locale;
 
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(AiProperties.class)
 class AiConfiguration {
+
+    @Bean
+    Clock systemClock() {
+        return Clock.systemUTC();
+    }
 
     @Bean
     AiClientIdentityResolver aiClientIdentityResolver() {
@@ -23,36 +29,31 @@ class AiConfiguration {
 
     @Bean
     AiUsageGuard aiUsageGuard(
+            Clock clock,
             AiClientIdentityResolver identityResolver,
-            @Value("${threadcity.ai.enabled:true}") boolean enabled,
-            @Value("${threadcity.ai.limits.session-daily:6}") int sessionDailyLimit,
-            @Value("${threadcity.ai.limits.network-hourly:12}") int networkHourlyLimit,
-            @Value("${threadcity.ai.limits.global-daily:100}") int globalDailyLimit,
-            @Value("${threadcity.ai.limits.concurrent:2}") int concurrentLimit,
-            @Value("${threadcity.ai.limits.state-file:}") String stateFile,
-            @Value("${threadcity.ai.kill-switch-file:}") String killSwitchFile) {
+            AiProperties properties) {
+        AiProperties.Limits limits = properties.limits();
         return new AiUsageGuard(
-                Clock.systemUTC(),
+                clock,
                 identityResolver,
-                enabled,
-                sessionDailyLimit,
-                networkHourlyLimit,
-                globalDailyLimit,
-                concurrentLimit,
-                optionalPath(stateFile),
-                optionalPath(killSwitchFile));
+                properties.enabled(),
+                limits.sessionDaily(),
+                limits.networkHourly(),
+                limits.globalDaily(),
+                limits.concurrent(),
+                optionalPath(limits.stateFile()),
+                optionalPath(properties.killSwitchFile()));
     }
 
     @Bean
     IncidentExplanationService incidentExplanationService(
             AiUsageGuard usageGuard,
-            @Value("${threadcity.ai.provider:none}") String provider,
-            @Value("${threadcity.ai.api-key:}") String apiKey,
-            @Value("${threadcity.ai.model:gpt-4.1-mini}") String openAiModelName) {
-        IncidentExplanationService providerService = switch (provider.strip().toLowerCase(Locale.ROOT)) {
-            case "openai" -> createOpenAiService(apiKey, openAiModelName);
+            AiProperties properties) {
+        IncidentExplanationService providerService = switch (properties.provider().strip().toLowerCase(Locale.ROOT)) {
+            case "openai" -> createOpenAiService(properties.apiKey(), properties.model().strip());
             case "none", "disabled" -> new UnavailableIncidentExplanationService();
-            default -> throw new IllegalArgumentException("Unsupported ThreadCity AI provider: " + provider);
+            default -> throw new IllegalArgumentException(
+                    "Unsupported ThreadCity AI provider: " + properties.provider());
         };
         return providerService.isAvailable()
                 ? new GuardedIncidentExplanationService(providerService, usageGuard)

@@ -2,6 +2,7 @@ package ca.bazlur.threadcity.ui.component;
 
 import ca.bazlur.threadcity.application.ThreadDumpAnalysisService;
 import ca.bazlur.threadcity.domain.AnalysisResult;
+import ca.bazlur.threadcity.domain.JavaThread;
 import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -14,6 +15,7 @@ import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.progressbar.ProgressBar;
 import com.vaadin.flow.component.slider.IntegerSlider;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
@@ -43,7 +45,7 @@ public final class IncidentTimeMachine extends Div {
     private final ProgressBar progress = new ProgressBar(0, STAGES.size() - 1, 0);
     private final Button play = new Button("Play incident", VaadinIcon.PLAY.create());
 
-    public IncidentTimeMachine(ThreadDumpAnalysisService analysisService, Consumer<String> inspectThread) {
+    public IncidentTimeMachine(ThreadDumpAnalysisService analysisService, Consumer<JavaThread> inspectThread) {
         this.analysisService = analysisService;
         trafficMap = new LockTrafficMap("time-machine-map", true, inspectThread);
         configureControls();
@@ -134,7 +136,7 @@ public final class IncidentTimeMachine extends Div {
         Thread.ofVirtual().name("threadcity-time-machine").start(() -> {
             for (int index = start + 1; index < STAGES.size(); index++) {
                 try {
-                    Thread.sleep(850);
+                    Thread.sleep(Duration.ofMillis(850));
                 } catch (InterruptedException exception) {
                     Thread.currentThread().interrupt();
                     return;

@@ -7,7 +7,7 @@ import java.util.Objects;
  * Optional JVM telemetry parsed from a thread header.
  */
 public record ThreadMetadata(
-        Integer javaThreadNumber,
+        Long javaThreadNumber,
         Integer priority,
         Integer osPriority,
         Double cpuMillis,

@@ -26,24 +26,30 @@ import java.util.stream.Collectors;
  */
 public final class LockTrafficMap extends Div {
 
-    private final Consumer<String> inspectThread;
+    private final Consumer<JavaThread> inspectThread;
     private final Consumer<WaitEdge> askAi;
     private final boolean compact;
+    private final boolean showAiAction;
     private AnalysisResult result;
     private String highlightedLockId;
 
-    public LockTrafficMap(String className, boolean compact, Consumer<String> inspectThread) {
-        this(className, compact, inspectThread, null);
+    public LockTrafficMap(String className, boolean compact, Consumer<JavaThread> inspectThread) {
+        this.inspectThread = inspectThread;
+        this.askAi = null;
+        this.compact = compact;
+        this.showAiAction = false;
+        addClassName(className);
     }
 
     public LockTrafficMap(
             String className,
             boolean compact,
-            Consumer<String> inspectThread,
+            Consumer<JavaThread> inspectThread,
             Consumer<WaitEdge> askAi) {
         this.inspectThread = inspectThread;
         this.askAi = askAi;
         this.compact = compact;
+        this.showAiAction = true;
         addClassName(className);
     }
 
@@ -68,10 +74,17 @@ public final class LockTrafficMap extends Div {
         header.addClassName("traffic-header");
         header.setWidthFull();
         header.expand(header.getComponentAt(0));
-        if (askAi != null && !result.waitEdges().isEmpty()) {
+        if (showAiAction && !result.waitEdges().isEmpty()) {
             WaitEdge primaryEdge = result.waitEdges().getFirst();
-            Button ask = new Button("✦ Ask AI about this wait", event -> askAi.accept(primaryEdge));
+            Button ask = new Button("✦ Ask AI about this wait", event -> {
+                if (askAi != null) {
+                    askAi.accept(primaryEdge);
+                }
+            });
             ask.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
+            ask.setEnabled(askAi != null);
+            ask.getElement().setAttribute(
+                    "title", askAi == null ? "Set OPENAI_API_KEY to enable the AI copilot" : "Ask about this wait");
             header.add(ask);
         }
         add(header, help(result));
@@ -143,7 +156,7 @@ public final class LockTrafficMap extends Div {
         if (highlightedThreadIds.contains(thread.id())) {
             node.addClassName("map-node-evidence");
         }
-        node.addClickListener(event -> inspectThread.accept(thread.name()));
+        node.addClickListener(event -> inspectThread.accept(thread));
         node.getElement().setAttribute("aria-label", thread.name() + ", state " + thread.state());
         node.getStyle().set("left", formatPercent(point.x() / 900.0));
         node.getStyle().set("top", formatPercent(point.y() / 360.0));

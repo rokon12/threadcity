@@ -16,6 +16,8 @@ import jdk.jfr.Name;
 import jdk.jfr.Recording;
 import jdk.jfr.StackTrace;
 import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -34,6 +36,7 @@ import java.util.Map;
 @Service
 public final class JfrAnalysisService {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(JfrAnalysisService.class);
     public static final int MAX_BYTES = 32 * 1024 * 1024;
     public static final int MAX_EVENTS = 250_000;
     public static final int MAX_SAMPLES = 4_000;
@@ -51,8 +54,8 @@ public final class JfrAnalysisService {
             if (recording != null) {
                 try {
                     Files.deleteIfExists(recording);
-                } catch (IOException ignored) {
-                    // The operating system will eventually reclaim its temporary directory.
+                } catch (IOException exception) {
+                    LOGGER.debug("Temporary uploaded JFR file could not be deleted", exception);
                 }
             }
         }
@@ -82,8 +85,8 @@ public final class JfrAnalysisService {
             if (recordingFile != null) {
                 try {
                     Files.deleteIfExists(recordingFile);
-                } catch (IOException ignored) {
-                    // The operating system will reclaim its temporary directory.
+                } catch (IOException exception) {
+                    LOGGER.debug("Temporary demo JFR file could not be deleted", exception);
                 }
             }
         }
@@ -96,7 +99,7 @@ public final class JfrAnalysisService {
             event.pressure = index;
             event.begin();
             try {
-                Thread.sleep(8);
+                Thread.sleep(Duration.ofMillis(8));
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
             }

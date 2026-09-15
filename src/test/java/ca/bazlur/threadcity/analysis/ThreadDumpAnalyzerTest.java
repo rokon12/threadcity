@@ -259,6 +259,35 @@ class ThreadDumpAnalyzerTest {
         });
     }
 
+    @Test
+    void boundsEvidenceWhileCountingALongBlockingChainExactly() {
+        int threadCount = 2_000;
+        StringBuilder dump = new StringBuilder(threadCount * 150);
+        for (int index = 0; index < threadCount; index++) {
+            dump.append('"').append("chain-").append(index).append("\" #").append(index + 1).append('\n')
+                    .append("   java.lang.Thread.State: ")
+                    .append(index == 0 ? "RUNNABLE" : "BLOCKED").append('\n');
+            if (index > 0) {
+                dump.append("    - waiting to lock <lock-").append(index)
+                        .append("> (a example.ChainLock)\n");
+            }
+            if (index < threadCount - 1) {
+                dump.append("    - locked <lock-").append(index + 1)
+                        .append("> (a example.ChainLock)\n");
+            }
+        }
+
+        AnalysisResult result = analyzer.analyze(parser.parse("long-chain", dump.toString()));
+
+        assertThat(result.blockingImpacts().getFirst()).satisfies(impact -> {
+            assertThat(impact.blocker().name()).isEqualTo("chain-0");
+            assertThat(impact.directlyBlocked()).isEqualTo(1);
+            assertThat(impact.transitivelyBlocked()).isEqualTo(threadCount - 1);
+            assertThat(impact.maximumDepth()).isEqualTo(threadCount - 1);
+            assertThat(impact.affectedThreads()).hasSize(12);
+        });
+    }
+
     private String sampleDump() throws IOException {
         try (var stream = getClass().getResourceAsStream("/samples/deadlock.txt")) {
             assertThat(stream).isNotNull();

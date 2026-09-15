@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,6 +35,11 @@ public final class HotSpotThreadDumpParser {
     private static final Pattern TID = Pattern.compile("(?:^|\\s)tid=([^\\s,]+)");
     private static final Pattern NID = Pattern.compile("(?:^|\\s)nid=([^\\s,]+)");
     private static final Pattern GROUP = Pattern.compile("(?:^|\\s)group=\"([^\"]*)\"");
+    private static final Pattern DEADLOCK_APPENDIX = Pattern.compile("Found (?:one|[0-9]+) Java-level deadlocks?:");
+    private static final Pattern DAEMON = Pattern.compile("(?:^|\\s)daemon(?:\\s|$)");
+    private static final Pattern VIRTUAL = Pattern.compile("\\bvirtual\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern PLATFORM = Pattern.compile("\\bplatform\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CONTROL_CHARACTER = Pattern.compile("[\\p{Cntrl}]");
     private static final int MAX_IGNORED_SAMPLES = 50;
     private static final int MAX_IGNORED_LINE_CHARS = 240;
 
@@ -150,7 +154,7 @@ public final class HotSpotThreadDumpParser {
     }
 
     private boolean isDeadlockAppendixStart(String line) {
-        return line.matches("Found (?:one|[0-9]+) Java-level deadlocks?:");
+        return DEADLOCK_APPENDIX.matcher(line).matches();
     }
 
     private static String stripBom(String dump) {
@@ -175,7 +179,7 @@ public final class HotSpotThreadDumpParser {
     }
 
     private static ThreadMetadata parseMetadata(String specification) {
-        Integer javaThreadNumber = integerValue(THREAD_NUMBER, specification);
+        Long javaThreadNumber = longValue(THREAD_NUMBER, specification);
         Integer priority = integerValue(PRIORITY, specification);
         Integer osPriority = integerValue(OS_PRIORITY, specification);
         Double cpuMillis = durationValue(CPU_TIME, specification, true);
@@ -183,12 +187,11 @@ public final class HotSpotThreadDumpParser {
         String tid = stringValue(TID, specification);
         String nid = stringValue(NID, specification);
         String group = stringValue(GROUP, specification);
-        boolean daemon = Pattern.compile("(?:^|\\s)daemon(?:\\s|$)").matcher(specification).find();
-        String lower = specification.toLowerCase(Locale.ROOT);
+        boolean daemon = DAEMON.matcher(specification).find();
         ThreadMetadata.ThreadKind kind;
-        if (lower.matches(".*\\bvirtual\\b.*")) {
+        if (VIRTUAL.matcher(specification).find()) {
             kind = ThreadMetadata.ThreadKind.VIRTUAL;
-        } else if (lower.matches(".*\\bplatform\\b.*") || tid != null || nid != null) {
+        } else if (PLATFORM.matcher(specification).find() || tid != null || nid != null) {
             kind = ThreadMetadata.ThreadKind.PLATFORM;
         } else {
             kind = ThreadMetadata.ThreadKind.UNKNOWN;
@@ -201,6 +204,11 @@ public final class HotSpotThreadDumpParser {
     private static Integer integerValue(Pattern pattern, String specification) {
         Matcher matcher = pattern.matcher(specification);
         return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
+    }
+
+    private static Long longValue(Pattern pattern, String specification) {
+        Matcher matcher = pattern.matcher(specification);
+        return matcher.find() ? Long.valueOf(matcher.group(1)) : null;
     }
 
     private static String stringValue(Pattern pattern, String specification) {
@@ -260,7 +268,7 @@ public final class HotSpotThreadDumpParser {
 
         private void ignored(String line) {
             ignoredLines++;
-            String safe = line.strip().replaceAll("[\\p{Cntrl}]", "?");
+            String safe = CONTROL_CHARACTER.matcher(line.strip()).replaceAll("?");
             if (safe.length() > MAX_IGNORED_LINE_CHARS) {
                 safe = safe.substring(0, MAX_IGNORED_LINE_CHARS - 1) + "…";
             }

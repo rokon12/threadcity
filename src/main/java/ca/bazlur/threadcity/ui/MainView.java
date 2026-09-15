@@ -1,6 +1,7 @@
 package ca.bazlur.threadcity.ui;
 
 import ca.bazlur.threadcity.ai.IncidentExplanationService;
+import ca.bazlur.threadcity.application.EvidenceTaskExecutor;
 import ca.bazlur.threadcity.application.ThreadDumpAnalysisService;
 import ca.bazlur.threadcity.application.JfrAnalysisService;
 import ca.bazlur.threadcity.application.IncidentBundleService;
@@ -9,11 +10,14 @@ import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.Finding;
 import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.IncidentBundle;
+import ca.bazlur.threadcity.domain.JfrAnalysis;
+import ca.bazlur.threadcity.domain.ThreadMetadata;
 import ca.bazlur.threadcity.domain.ThreadState;
 import ca.bazlur.threadcity.domain.WaitEdge;
 import ca.bazlur.threadcity.parser.ThreadDumpUploadValidator;
 import ca.bazlur.threadcity.ui.component.AiCopilotPanel;
 import ca.bazlur.threadcity.ui.component.BlockerLeaderboard;
+import ca.bazlur.threadcity.ui.component.EvidenceUploadControls;
 import ca.bazlur.threadcity.ui.component.IncidentComparisonPanel;
 import ca.bazlur.threadcity.ui.component.IncidentTimeMachine;
 import ca.bazlur.threadcity.ui.component.IncidentPatternPanel;
@@ -25,6 +29,7 @@ import ca.bazlur.threadcity.ui.component.JudgeModeCoach;
 import ca.bazlur.threadcity.ui.component.SynchronizerObservatory;
 import ca.bazlur.threadcity.ui.component.StackCohortExplorer;
 import ca.bazlur.threadcity.ui.component.ThreadEvidencePanel;
+import ca.bazlur.threadcity.ui.component.WorkbenchNavigator;
 import ca.bazlur.threadcity.ui.support.IncidentNarrative;
 import ca.bazlur.threadcity.ui.support.AiEvidenceReference;
 import com.vaadin.flow.component.Component;
@@ -43,27 +48,33 @@ import com.vaadin.flow.component.notification.NotificationVariant;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.orderedlayout.VerticalLayout;
 import com.vaadin.flow.component.tabs.Tab;
-import com.vaadin.flow.component.tabs.Tabs;
-import com.vaadin.flow.component.upload.Upload;
 import com.vaadin.flow.router.PageTitle;
 import com.vaadin.flow.router.Route;
-import com.vaadin.flow.server.streams.InMemoryUploadHandler;
 import com.vaadin.flow.server.streams.DownloadHandler;
 import com.vaadin.flow.server.streams.DownloadResponse;
 import com.vaadin.flow.server.streams.UploadMetadata;
 import com.vaadin.flow.shared.Registration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.io.ByteArrayInputStream;
-import java.util.LinkedHashMap;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 @Route(value = "", layout = MainLayout.class)
 @PageTitle("ThreadCity — JVM traffic control")
 public class MainView extends Div {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(MainView.class);
 
     private static final List<String> FIX_STEPS = List.of(
             "Payment lock acquired",
@@ -76,9 +87,12 @@ public class MainView extends Div {
     private final ThreadDumpAnalysisService analysisService;
     private final IncidentBundleService bundleService;
     private final IncidentReportService reportService;
+    private final JfrAnalysisService jfrAnalysisService;
+    private final EvidenceTaskExecutor taskExecutor;
     private final boolean aiAvailable;
     private final ThreadDumpUploadValidator uploadValidator = new ThreadDumpUploadValidator();
     private final AtomicLong replayGeneration = new AtomicLong();
+    private final AtomicLong analysisGeneration = new AtomicLong();
 
     private final Div hero = new Div();
     private final Div analysisSection = new Div();
@@ -96,7 +110,6 @@ public class MainView extends Div {
     private final Div jfrPage = new Div();
     private final Div comparePage = new Div();
     private final Div copilotPage = new Div();
-    private final Tabs workbenchTabs = new Tabs();
     private final Tab overviewTab = tab(VaadinIcon.MAP_MARKER, "Incident map");
     private final Tab timelineTab = tab(VaadinIcon.TIME_BACKWARD, "Time machine");
     private final Tab threadsTab = tab(VaadinIcon.TABLE, "Threads & evidence");
@@ -105,14 +118,22 @@ public class MainView extends Div {
     private final Tab jfrTab = tab(VaadinIcon.CLOCK, "JFR timeline");
     private final Tab compareTab = tab(VaadinIcon.SPLIT, "Compare fix");
     private final Tab copilotTab = tab(VaadinIcon.CHAT, "AI copilot");
-    private final Map<Tab, Component> workbenchPages = new LinkedHashMap<>();
+    private final WorkbenchNavigator workbench = new WorkbenchNavigator(List.of(
+            new WorkbenchNavigator.Page(overviewTab, overviewPage),
+            new WorkbenchNavigator.Page(timelineTab, timelinePage),
+            new WorkbenchNavigator.Page(threadsTab, threadsPage),
+            new WorkbenchNavigator.Page(synchronizersTab, synchronizersPage),
+            new WorkbenchNavigator.Page(cohortsTab, cohortsPage),
+            new WorkbenchNavigator.Page(jfrTab, jfrPage),
+            new WorkbenchNavigator.Page(compareTab, comparePage),
+            new WorkbenchNavigator.Page(copilotTab, copilotPage)));
 
     private final Button replayButton = new Button("Replay a production deadlock");
     private final Button fixButton = new Button("Replay with the fix");
     private final Button clearButton = new Button("Clear analysis");
     private final Button judgeModeButton = new Button("Launch Judge Mode", VaadinIcon.STAR.create());
-    private final Upload upload;
-    private final Upload bundleUpload;
+    private final Button aiCopilotButton = new Button("✦ AI incident copilot");
+    private final EvidenceUploadControls uploadControls;
     private final Anchor reportDownload;
     private final LockTrafficMap trafficMap;
     private final BlockerLeaderboard blockerLeaderboard;
@@ -130,16 +151,20 @@ public class MainView extends Div {
 
     private AnalysisResult currentResult;
     private Registration resizeRegistration;
+    private Future<?> activeAnalysis;
 
     public MainView(
             IncidentExplanationService incidentExplanationService,
             ThreadDumpAnalysisService analysisService,
             JfrAnalysisService jfrAnalysisService,
             IncidentBundleService bundleService,
-            IncidentReportService reportService) {
+            IncidentReportService reportService,
+            EvidenceTaskExecutor taskExecutor) {
         this.analysisService = analysisService;
+        this.jfrAnalysisService = jfrAnalysisService;
         this.bundleService = bundleService;
         this.reportService = reportService;
+        this.taskExecutor = taskExecutor;
         aiAvailable = incidentExplanationService.isAvailable();
         evidencePanel = new ThreadEvidencePanel(
                 this::showSuccess, aiAvailable ? this::askAiAboutThread : null);
@@ -151,7 +176,7 @@ public class MainView extends Div {
         parserConfidencePanel = new ParserConfidencePanel(this::showSuccess);
         incidentPatternPanel = new IncidentPatternPanel(this::inspectThread);
         jfrTimelinePanel = new JfrTimelinePanel(
-                jfrAnalysisService, this::inspectThread, this::showSuccess, this::showError);
+                jfrAnalysisService, taskExecutor, this::inspectThread, this::showSuccess, this::showError);
         timeMachine = new IncidentTimeMachine(analysisService, this::inspectThread);
         comparisonPanel = new IncidentComparisonPanel(analysisService);
         multiDumpComparisonPanel = new MultiDumpComparisonPanel(analysisService, this::showSuccess, this::showError);
@@ -160,8 +185,7 @@ public class MainView extends Div {
                 () -> selectWorkbenchPage(copilotTab),
                 this::showError,
                 this::navigateAiEvidence);
-        upload = createUpload();
-        bundleUpload = createBundleUpload();
+        uploadControls = new EvidenceUploadControls(this::handleUpload, this::handleBundleUpload, this::showError);
         reportDownload = createReportDownload();
         judgeModeCoach = new JudgeModeCoach(this::navigateJudgeMode);
 
@@ -189,90 +213,18 @@ public class MainView extends Div {
     private void registerLifecycleListeners() {
         addAttachListener(event -> {
             UI ui = event.getUI();
-            ui.getPage().retrieveExtendedClientDetails(
+            ui.getPage().getExtendedClientDetails().refresh(
                     details -> evidencePanel.updateResponsiveMode(details.getWindowInnerWidth()));
             resizeRegistration = ui.getPage().addBrowserWindowResizeListener(
                     resize -> evidencePanel.updateResponsiveMode(resize.getWidth()));
         });
         addDetachListener(event -> {
-            replayGeneration.incrementAndGet();
-            timeMachine.cancelReplay();
+            cancelActiveWork();
             if (resizeRegistration != null) {
                 resizeRegistration.remove();
                 resizeRegistration = null;
             }
         });
-    }
-
-    private Upload createUpload() {
-        InMemoryUploadHandler handler = new InMemoryUploadHandler(this::handleUpload) {
-            @Override
-            public long getFileSizeMax() {
-                return ThreadDumpUploadValidator.MAX_BYTES;
-            }
-
-            @Override
-            public long getRequestSizeMax() {
-                return ThreadDumpUploadValidator.MAX_BYTES + 64 * 1024L;
-            }
-
-            @Override
-            public long getFileCountMax() {
-                return 1;
-            }
-        };
-        handler.whenComplete(success -> {
-            if (!success) {
-                showError("Upload failed. The file was not retained.");
-            }
-        });
-
-        Upload component = new Upload(handler);
-        component.setMaxFiles(1);
-        component.setMaxFileSize(ThreadDumpUploadValidator.MAX_BYTES);
-        component.setAcceptedFileTypes(".txt", ".log", "text/plain");
-        component.setDropLabel(new Span("Drop a jstack .txt or .log here"));
-        Button chooseFile = new Button("Analyze your thread dump");
-        chooseFile.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-        component.setUploadButton(chooseFile);
-        component.addClassName("dump-upload");
-        component.addFileRejectedListener(event -> showError(normalizeUploadError(event.getErrorMessage())));
-        return component;
-    }
-
-    private Upload createBundleUpload() {
-        InMemoryUploadHandler handler = new InMemoryUploadHandler(this::handleBundleUpload) {
-            @Override
-            public long getFileSizeMax() {
-                return IncidentBundleService.MAX_BUNDLE_BYTES;
-            }
-
-            @Override
-            public long getRequestSizeMax() {
-                return IncidentBundleService.MAX_BUNDLE_BYTES + 64 * 1024L;
-            }
-
-            @Override
-            public long getFileCountMax() {
-                return 1;
-            }
-        };
-        handler.whenComplete(success -> {
-            if (!success) {
-                showError("Incident bundle upload failed. The file was not retained.");
-            }
-        });
-        Upload component = new Upload(handler);
-        component.setMaxFiles(1);
-        component.setMaxFileSize(IncidentBundleService.MAX_BUNDLE_BYTES);
-        component.setAcceptedFileTypes(".threadcity", "application/zip", "application/octet-stream");
-        component.setDropLabel(new Span("Drop a collector .threadcity bundle"));
-        Button chooseFile = new Button("Open complete incident bundle");
-        chooseFile.addThemeVariants(ButtonVariant.LUMO_CONTRAST);
-        component.setUploadButton(chooseFile);
-        component.addClassName("bundle-upload");
-        component.addFileRejectedListener(event -> showError("Choose one .threadcity bundle up to 48 MiB"));
-        return component;
     }
 
     private Anchor createReportDownload() {
@@ -307,6 +259,27 @@ public class MainView extends Div {
         judgeModeButton.addClickListener(event -> judgeModeCoach.open());
         judgeModeButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_LARGE);
         judgeModeButton.addClassName("judge-mode-button");
+
+        aiCopilotButton.addClickListener(event -> openAiCopilot());
+        aiCopilotButton.addThemeVariants(ButtonVariant.LUMO_TERTIARY, ButtonVariant.LUMO_LARGE);
+        aiCopilotButton.addClassName("hero-ai-button");
+        aiCopilotButton.setEnabled(aiAvailable);
+        aiCopilotButton.getElement().setAttribute(
+                "title",
+                aiAvailable
+                        ? "Open the AI incident copilot"
+                        : "Set OPENAI_API_KEY to enable this feature");
+    }
+
+    private void openAiCopilot() {
+        if (!aiAvailable) {
+            return;
+        }
+        if (currentResult == null) {
+            render(analysisService.analyzeSample("AI copilot demo · checkout deadlock", "deadlock.txt"));
+            revealAnalysis();
+        }
+        selectWorkbenchPage(copilotTab);
     }
 
     private Component buildHero() {
@@ -317,33 +290,15 @@ public class MainView extends Div {
                 "Turn an unreadable Java thread dump into an interactive map of lock ownership, circular waits, and repeated work.");
         description.addClassName("hero-copy");
 
-        HorizontalLayout actions = new HorizontalLayout(judgeModeButton, replayButton, fixButton);
+        HorizontalLayout actions = new HorizontalLayout(
+                judgeModeButton, replayButton, fixButton, aiCopilotButton);
         actions.addClassName("hero-actions");
         actions.setPadding(false);
         Span hint = new Span("No sign-in · Nothing persisted · Deterministic Java core · AI is opt-in");
         hint.addClassName("hero-hint");
 
-        Div uploadCard = new Div(upload);
-        uploadCard.addClassName("upload-card");
-        Span uploadPrivacy = new Span("UTF-8 text only · 5 MiB maximum · Released when you clear the analysis");
-        uploadPrivacy.addClassName("upload-privacy");
-        Anchor exampleDownload = new Anchor("/examples/jstack.txt", "Download example jstack.txt");
-        exampleDownload.getElement().setAttribute("download", "jstack.txt");
-        exampleDownload.addClassName("example-download");
-        Div uploadFooter = new Div(uploadPrivacy, exampleDownload);
-        uploadFooter.addClassName("upload-footer");
-        uploadCard.add(uploadFooter);
-
-        Span bundleLabel = new Span("FULL INCIDENT WINDOW");
-        bundleLabel.addClassName("bundle-upload-label");
-        Div bundleCard = new Div(
-                bundleLabel,
-                new Paragraph("Open 2–5 chronological dumps plus JFR in one step."),
-                bundleUpload);
-        bundleCard.addClassNames("upload-card", "bundle-upload-card");
-
         VerticalLayout content = new VerticalLayout(
-                eyebrow, title, description, actions, hint, uploadCard, bundleCard);
+                eyebrow, title, description, actions, hint, uploadControls.dumpCard(), uploadControls.bundleCard());
         content.setPadding(false);
         content.setSpacing(false);
         content.addClassName("hero-content");
@@ -378,103 +333,74 @@ public class MainView extends Div {
         jfrPage.add(jfrTimelinePanel);
         comparePage.add(multiDumpComparisonPanel, comparisonPanel);
         copilotPage.add(copilotPanel);
-        configureWorkbenchTabs();
-
         HorizontalLayout footerActions = new HorizontalLayout(clearButton);
         footerActions.addClassName("analysis-actions");
-        Div pages = new Div(
-                overviewPage,
-                timelinePage,
-                threadsPage,
-                synchronizersPage,
-                cohortsPage,
-                jfrPage,
-                comparePage,
-                copilotPage);
-        pages.addClassName("workbench-pages");
-        analysisSection.add(incidentStatus, workbenchTabs, pages, footerActions);
+        analysisSection.add(incidentStatus, workbench, footerActions);
         return analysisSection;
     }
 
-    private void configureWorkbenchTabs() {
-        workbenchTabs.add(
-                overviewTab, timelineTab, threadsTab, synchronizersTab, cohortsTab, jfrTab, compareTab, copilotTab);
-        workbenchTabs.addClassName("workbench-tabs");
-        workbenchTabs.setWidthFull();
-
-        workbenchPages.put(overviewTab, overviewPage);
-        workbenchPages.put(timelineTab, timelinePage);
-        workbenchPages.put(threadsTab, threadsPage);
-        workbenchPages.put(synchronizersTab, synchronizersPage);
-        workbenchPages.put(cohortsTab, cohortsPage);
-        workbenchPages.put(jfrTab, jfrPage);
-        workbenchPages.put(compareTab, comparePage);
-        workbenchPages.put(copilotTab, copilotPage);
-        workbenchPages.values().forEach(page -> {
-            page.addClassName("workbench-page");
-            page.setVisible(page == overviewPage);
-        });
-        workbenchTabs.addSelectedChangeListener(event -> showWorkbenchPage(event.getSelectedTab()));
-    }
-
-    private void showWorkbenchPage(Tab selected) {
-        workbenchPages.forEach((tab, page) -> page.setVisible(tab == selected));
-    }
-
     private void selectWorkbenchPage(Tab tab) {
-        workbenchTabs.setSelectedTab(tab);
-        showWorkbenchPage(tab);
+        workbench.select(tab);
     }
 
     private void handleUpload(UploadMetadata metadata, byte[] bytes) {
-        cancelActiveReplays();
-        try {
+        cancelActiveWork();
+        uploadControls.clearDump();
+        runEvidenceTask(() -> {
             ThreadDumpUploadValidator.ValidatedUpload validated = uploadValidator.validate(
                     metadata.fileName(), metadata.contentType(), bytes);
-            AnalysisResult result = analysisService.analyze(validated.sourceName(), validated.content());
+            return analysisService.analyze(validated.sourceName(), validated.content());
+        }, result -> {
             replayTimeline.setVisible(false);
             render(result);
             revealAnalysis();
             selectWorkbenchPage(overviewTab);
-            upload.clearFileList();
             showSuccess(result.snapshot().threads().size() + " threads analyzed. The original upload was not retained.");
-        } catch (IllegalArgumentException exception) {
-            upload.clearFileList();
-            showError(exception.getMessage());
-        } catch (RuntimeException exception) {
-            upload.clearFileList();
-            showError("ThreadCity could not analyze that file. Its content was not retained.");
-        }
+        }, exception -> exception instanceof IllegalArgumentException
+                ? exception.getMessage()
+                : "ThreadCity could not analyze that file. Its content was not retained.");
     }
 
     private void handleBundleUpload(UploadMetadata metadata, byte[] bytes) {
-        cancelActiveReplays();
-        try {
+        cancelActiveWork();
+        uploadControls.clearBundle();
+        runEvidenceTask(() -> {
             IncidentBundle bundle = bundleService.read(metadata.fileName(), bytes);
             List<AnalysisResult> snapshots = bundle.threadDumps().stream()
                     .map(dump -> analysisService.analyze(dump.sourceName(), dump.content()))
                     .toList();
-            AnalysisResult latest = snapshots.getLast();
-            multiDumpComparisonPanel.setSnapshots(snapshots);
+            AnalysisResult latest = bundle.allThreads()
+                    .map(dump -> analysisService.analyzeJava25(
+                            dump.sourceName(), dump.content().getBytes(StandardCharsets.UTF_8)))
+                    .orElseGet(snapshots::getLast);
+            Optional<JfrAnalysis> jfr = bundle.recording()
+                    .map(recording -> jfrAnalysisService.analyze("recording.jfr", recording));
+            return new BundleAnalysis(snapshots, latest, jfr, bundle.allThreads().isPresent());
+        }, bundle -> {
+            jfrTimelinePanel.clear();
+            multiDumpComparisonPanel.setSnapshots(bundle.snapshots());
+            AnalysisResult latest = bundle.primary();
             render(latest);
-            bundle.recording().ifPresent(recording -> jfrTimelinePanel.analyze("recording.jfr", recording));
+            bundle.jfr().ifPresent(jfrTimelinePanel::showAnalysis);
             replayTimeline.setVisible(false);
             revealAnalysis();
             selectWorkbenchPage(overviewTab);
-            bundleUpload.clearFileList();
-            showSuccess("Incident window opened: " + snapshots.size()
-                    + " dumps plus JFR. The original bundle was not retained.");
-        } catch (IllegalArgumentException exception) {
-            bundleUpload.clearFileList();
-            showError(exception.getMessage());
-        } catch (RuntimeException exception) {
-            bundleUpload.clearFileList();
-            showError("ThreadCity could not open that incident bundle. Its content was not retained.");
-        }
+            long virtualThreads = latest.snapshot().threads().stream()
+                    .filter(thread -> thread.metadata().kind() == ThreadMetadata.ThreadKind.VIRTUAL)
+                    .count();
+            String allThreads = bundle.hasAllThreads()
+                    ? ", Java 25 all-thread evidence (" + virtualThreads + " virtual)"
+                    : "";
+            String jfr = bundle.jfr().isPresent() ? ", plus JFR" : "";
+            showSuccess("Incident window opened: " + bundle.snapshots().size() + " chronological dumps"
+                    + allThreads + jfr + ". The original bundle was not retained.");
+        }, exception -> exception instanceof IllegalArgumentException
+                ? exception.getMessage()
+                : "ThreadCity could not open that incident bundle. Its content was not retained.");
     }
 
     private void analyzeBuiltInIncident() {
-        cancelActiveReplays();
+        cancelActiveWork();
         setActionsEnabled(true);
         replayTimeline.setVisible(false);
         render(analysisService.analyzeSample("Checkout outage · 02:14 UTC", "deadlock.txt"));
@@ -483,7 +409,7 @@ public class MainView extends Div {
     }
 
     private void replayCorrectedIncident() {
-        timeMachine.cancelReplay();
+        cancelActiveWork();
         long generation = replayGeneration.incrementAndGet();
         render(analysisService.analyzeSample("Checkout outage · before the fix", "deadlock.txt"));
         prepareReplayTimeline();
@@ -498,7 +424,7 @@ public class MainView extends Div {
         Thread.ofVirtual().name("threadcity-corrected-replay").start(() -> {
             for (int index = 0; index < FIX_STEPS.size(); index++) {
                 try {
-                    Thread.sleep(650);
+                    Thread.sleep(java.time.Duration.ofMillis(650));
                 } catch (InterruptedException exception) {
                     Thread.currentThread().interrupt();
                     return;
@@ -572,11 +498,64 @@ public class MainView extends Div {
         timeMachine.cancelReplay();
     }
 
+    private void cancelActiveWork() {
+        cancelActiveReplays();
+        analysisGeneration.incrementAndGet();
+        if (activeAnalysis != null) {
+            activeAnalysis.cancel(true);
+            activeAnalysis = null;
+        }
+    }
+
+    private <T> void runEvidenceTask(
+            Supplier<T> work,
+            Consumer<T> success,
+            Function<RuntimeException, String> errorMessage) {
+        UI ui = UI.getCurrent();
+        long generation = analysisGeneration.incrementAndGet();
+        setActionsEnabled(false);
+        Optional<Future<?>> submitted = taskExecutor.trySubmit(() -> {
+            try {
+                T result = work.get();
+                access(ui, () -> {
+                    if (generation != analysisGeneration.get()) {
+                        return;
+                    }
+                    activeAnalysis = null;
+                    setActionsEnabled(true);
+                    success.accept(result);
+                });
+            } catch (RuntimeException exception) {
+                LOGGER.warn("Evidence analysis failed ({})", exception.getClass().getSimpleName(), exception);
+                access(ui, () -> {
+                    if (generation != analysisGeneration.get()) {
+                        return;
+                    }
+                    activeAnalysis = null;
+                    setActionsEnabled(true);
+                    showError(errorMessage.apply(exception));
+                });
+            }
+        });
+        if (submitted.isEmpty()) {
+            setActionsEnabled(true);
+            showError("Two evidence analyses are already running. Try again in a moment.");
+            return;
+        }
+        activeAnalysis = submitted.get();
+    }
+
+    private static void access(UI ui, Runnable action) {
+        if (ui != null && ui.isAttached()) {
+            ui.access(action::run);
+        }
+    }
+
     private void setActionsEnabled(boolean enabled) {
         replayButton.setEnabled(enabled);
         fixButton.setEnabled(enabled);
-        upload.setEnabled(enabled);
-        bundleUpload.setEnabled(enabled);
+        uploadControls.setEnabled(enabled);
+        jfrTimelinePanel.setControlsEnabled(enabled);
         copilotPanel.setControlsEnabled(enabled);
         timeMachine.setControlsEnabled(enabled);
         judgeModeButton.setEnabled(enabled);
@@ -584,7 +563,7 @@ public class MainView extends Div {
 
     private void navigateJudgeMode(int step) {
         if (requiresJudgeIncident(step, currentResult)) {
-            cancelActiveReplays();
+            cancelActiveWork();
             render(analysisService.analyzeSample("Judge tour · checkout deadlock", "deadlock.txt"));
             replayTimeline.setVisible(false);
             revealAnalysis();
@@ -687,12 +666,13 @@ public class MainView extends Div {
 
     private void renderMetrics(AnalysisResult result) {
         metrics.removeAll();
+        Map<ThreadState, Long> stateCounts = result.stateCounts();
         metrics.add(
                 metric("Threads", result.snapshot().threads().size(), "neutral"),
-                metric("Runnable", result.stateCounts().get(ThreadState.RUNNABLE), "good"),
-                metric("Waiting", result.stateCounts().get(ThreadState.WAITING)
-                        + result.stateCounts().get(ThreadState.TIMED_WAITING), "waiting"),
-                metric("Blocked", result.stateCounts().get(ThreadState.BLOCKED), "critical"),
+                metric("Runnable", stateCounts.get(ThreadState.RUNNABLE), "good"),
+                metric("Waiting", stateCounts.get(ThreadState.WAITING)
+                        + stateCounts.get(ThreadState.TIMED_WAITING), "waiting"),
+                metric("Blocked", stateCounts.get(ThreadState.BLOCKED), "critical"),
                 metric("Deadlocks", result.deadlocks().size(), result.hasDeadlock() ? "critical" : "good"));
     }
 
@@ -724,12 +704,14 @@ public class MainView extends Div {
                 inspect.addClassName("finding-action");
                 actions.add(inspect);
             }
-            if (aiAvailable) {
-                Button askAi = new Button("✦ Ask AI about finding", event -> askAiAboutFinding(finding));
-                askAi.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
-                askAi.addClassName("finding-action");
-                actions.add(askAi);
-            }
+            Button askAi = new Button("✦ Ask AI about finding", event -> askAiAboutFinding(finding));
+            askAi.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
+            askAi.addClassName("finding-action");
+            askAi.setEnabled(aiAvailable);
+            askAi.getElement().setAttribute(
+                    "title",
+                    aiAvailable ? "Ask about this finding" : "Set OPENAI_API_KEY to enable the AI copilot");
+            actions.add(askAi);
             card.add(actions);
             findings.add(card);
         }
@@ -741,6 +723,14 @@ public class MainView extends Div {
         }
         selectWorkbenchPage(threadsTab);
         evidencePanel.inspectThread(threadName);
+    }
+
+    private void inspectThread(JavaThread thread) {
+        if (currentResult == null) {
+            return;
+        }
+        selectWorkbenchPage(threadsTab);
+        evidencePanel.inspectThread(thread);
     }
 
     private void inspectLock(String lockId) {
@@ -787,7 +777,7 @@ public class MainView extends Div {
     }
 
     private void clearAnalysis() {
-        cancelActiveReplays();
+        cancelActiveWork();
         judgeModeCoach.close();
         currentResult = null;
         reportDownload.setEnabled(false);
@@ -800,27 +790,12 @@ public class MainView extends Div {
         jfrTimelinePanel.clear();
         multiDumpComparisonPanel.clear();
         replayTimeline.setVisible(false);
-        upload.clearFileList();
-        bundleUpload.clearFileList();
+        uploadControls.clear();
         setActionsEnabled(true);
         timeMachine.reset();
         selectWorkbenchPage(overviewTab);
         analysisSection.setVisible(false);
         hero.getElement().callJsFunction("scrollIntoView", true);
-    }
-
-    private String normalizeUploadError(String message) {
-        if (message == null || message.isBlank()) {
-            return "The file was rejected. Use a .txt or .log file up to 5 MiB.";
-        }
-        String normalized = message.toLowerCase(Locale.ROOT);
-        if (normalized.contains("large") || normalized.contains("size")) {
-            return "The uploaded file exceeds the 5 MiB limit";
-        }
-        if (normalized.contains("type") || normalized.contains("format")) {
-            return "Choose a .txt or .log thread dump";
-        }
-        return "The file was rejected. Use a .txt or .log file up to 5 MiB.";
     }
 
     private void showError(String message) {
@@ -837,5 +812,12 @@ public class MainView extends Div {
         var graphic = icon.create();
         graphic.setSize("1rem");
         return new Tab(graphic, new Span(label));
+    }
+
+    private record BundleAnalysis(
+            List<AnalysisResult> snapshots,
+            AnalysisResult primary,
+            Optional<JfrAnalysis> jfr,
+            boolean hasAllThreads) {
     }
 }

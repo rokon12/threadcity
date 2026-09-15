@@ -3,6 +3,7 @@ package ca.bazlur.threadcity.application;
 import ca.bazlur.threadcity.analysis.ThreadDumpAnalyzer;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.parser.HotSpotThreadDumpParser;
+import ca.bazlur.threadcity.parser.Java25ThreadDumpParser;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -16,10 +17,15 @@ import java.nio.charset.StandardCharsets;
 public final class ThreadDumpAnalysisService {
 
     private final HotSpotThreadDumpParser parser = new HotSpotThreadDumpParser();
+    private final Java25ThreadDumpParser java25Parser = new Java25ThreadDumpParser();
     private final ThreadDumpAnalyzer analyzer = new ThreadDumpAnalyzer();
 
     public AnalysisResult analyze(String sourceName, String content) {
         return analyzer.analyze(parser.parse(sourceName, content));
+    }
+
+    public AnalysisResult analyzeJava25(String sourceName, byte[] content) {
+        return analyzer.analyze(java25Parser.parse(sourceName, content));
     }
 
     public AnalysisResult analyzeSample(String sourceName, String fixtureName) {

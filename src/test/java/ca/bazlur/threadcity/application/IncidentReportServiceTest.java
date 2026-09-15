@@ -6,6 +6,9 @@ import ca.bazlur.threadcity.parser.HotSpotThreadDumpParser;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,13 +31,15 @@ class IncidentReportServiceTest {
                 new HotSpotThreadDumpParser().parse("checkout <img src=x>", dump));
 
         String report = new String(
-                new IncidentReportService().create(result, Optional.empty()), StandardCharsets.UTF_8);
+                new IncidentReportService(Clock.fixed(Instant.parse("2026-09-15T12:00:00Z"), ZoneOffset.UTC))
+                        .create(result, Optional.empty()),
+                StandardCharsets.UTF_8);
 
         assertThat(report)
                 .contains("ThreadCity incident dossier", "Wait-for evidence", "Verification checklist")
                 .contains("request-&lt;script&gt;alert(1)&lt;/script&gt;")
                 .contains("checkout &lt;img src=x&gt;")
                 .doesNotContain("<script>alert(1)</script>", "<img src=x>")
-                .contains("default-src 'none'");
+                .contains("default-src 'none'", "2026-09-15T12:00:00Z");
     }
 }

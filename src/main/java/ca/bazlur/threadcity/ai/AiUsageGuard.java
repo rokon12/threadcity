@@ -1,5 +1,8 @@
 package ca.bazlur.threadcity.ai;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -22,6 +25,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 final class AiUsageGuard {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AiUsageGuard.class);
     private static final int MAX_TRACKED_CLIENTS = 4_096;
 
     private final Clock clock;
@@ -148,6 +152,8 @@ final class AiUsageGuard {
             }
         } catch (IOException | RuntimeException exception) {
             persistenceHealthy = false;
+            LOGGER.warn("AI usage ledger could not be loaded; provider access is disabled ({})",
+                    exception.getClass().getSimpleName());
         }
     }
 
@@ -176,6 +182,8 @@ final class AiUsageGuard {
             }
         } catch (IOException exception) {
             persistenceHealthy = false;
+            LOGGER.warn("AI usage ledger could not be persisted; provider access is disabled ({})",
+                    exception.getClass().getSimpleName());
             throw rejection(
                     "Could not persist the AI usage ledger",
                     "The AI demo was safely disabled because its usage protection is unavailable.");
@@ -184,7 +192,7 @@ final class AiUsageGuard {
                 try {
                     Files.deleteIfExists(temporary);
                 } catch (IOException ignored) {
-                    // The atomic target already contains the authoritative counter.
+                    LOGGER.debug("Temporary AI usage-ledger file could not be deleted", ignored);
                 }
             }
         }

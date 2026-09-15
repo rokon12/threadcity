@@ -428,6 +428,17 @@ body {
     color: var(--tc-green);
 }
 
+.hero-ai-button {
+    border-color: rgba(114, 167, 255, 0.34);
+    color: #b9d0ff;
+}
+
+.hero-ai-button[disabled] {
+    border-color: rgba(114, 167, 255, 0.18);
+    color: #8290a6;
+    opacity: 0.78;
+}
+
 .ai-explanation {
     margin-top: 1rem;
     padding: 1.35rem;

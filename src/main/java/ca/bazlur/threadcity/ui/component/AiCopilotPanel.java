@@ -20,6 +20,8 @@ import com.vaadin.flow.component.messages.MessageList;
 import com.vaadin.flow.component.messages.MessageListItem;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.progressbar.ProgressBar;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -33,6 +35,7 @@ import java.util.function.Consumer;
  */
 public final class AiCopilotPanel extends Div {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(AiCopilotPanel.class);
     private static final String DEFAULT_QUESTION =
             "Explain this incident, identify the strongest evidence, and propose a fix with verification steps.";
 
@@ -112,7 +115,11 @@ public final class AiCopilotPanel extends Div {
         action.addClickListener(event -> request(DEFAULT_QUESTION));
         action.addThemeVariants(ButtonVariant.LUMO_TERTIARY);
         action.addClassName("ai-action");
-        action.setVisible(explanationService.isAvailable());
+        action.getElement().setAttribute(
+                "title",
+                explanationService.isAvailable()
+                        ? "Explain this incident with the configured AI provider"
+                        : "Set OPENAI_API_KEY to enable the AI copilot");
 
         messages.addClassName("copilot-messages");
         messages.setMarkdown(false);
@@ -296,6 +303,7 @@ public final class AiCopilotPanel extends Div {
         if (isStale(generation, request, ui)) {
             return;
         }
+        LOGGER.warn("AI incident explanation failed ({})", failure.getClass().getSimpleName(), failure);
         ui.access(() -> {
             if (!isCurrent(generation, request) || result != requestedResult) {
                 return;

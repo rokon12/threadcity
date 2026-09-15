@@ -4,8 +4,8 @@ import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.PersistentThread;
 import ca.bazlur.threadcity.domain.ThreadState;
+import ca.bazlur.threadcity.domain.ThreadIdentities;
 
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -19,25 +19,17 @@ public final class SnapshotTrendAnalyzer {
         if (snapshots.size() < 3) {
             return List.of();
         }
-        Map<String, JavaThread> first = uniqueByName(snapshots.getFirst());
+        List<Map<String, JavaThread>> indexedSnapshots = snapshots.stream()
+                .map(snapshot -> ThreadIdentities.index(snapshot.snapshot().threads()))
+                .toList();
+        Map<String, JavaThread> first = indexedSnapshots.getFirst();
         return first.entrySet().stream()
                 .filter(entry -> isPotentialStall(entry.getValue()))
-                .filter(entry -> snapshots.stream()
-                        .map(this::uniqueByName)
+                .filter(entry -> indexedSnapshots.stream()
                         .map(threads -> threads.get(entry.getKey()))
                         .allMatch(thread -> sameExecutionPoint(entry.getValue(), thread)))
                 .map(entry -> persistent(entry.getValue(), snapshots.size()))
                 .toList();
-    }
-
-    private Map<String, JavaThread> uniqueByName(AnalysisResult result) {
-        Map<String, Integer> occurrences = new LinkedHashMap<>();
-        result.snapshot().threads().forEach(thread -> occurrences.merge(thread.name(), 1, Integer::sum));
-        Map<String, JavaThread> unique = new LinkedHashMap<>();
-        result.snapshot().threads().stream()
-                .filter(thread -> occurrences.get(thread.name()) == 1)
-                .forEach(thread -> unique.put(thread.name(), thread));
-        return unique;
     }
 
     private boolean isPotentialStall(JavaThread thread) {

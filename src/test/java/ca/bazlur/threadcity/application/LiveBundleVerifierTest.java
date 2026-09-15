@@ -3,6 +3,7 @@ package ca.bazlur.threadcity.application;
 import ca.bazlur.threadcity.analysis.SnapshotTrendAnalyzer;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.IncidentPattern;
+import ca.bazlur.threadcity.domain.ThreadMetadata;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
@@ -27,6 +28,10 @@ class LiveBundleVerifierTest {
                 .map(dump -> dumpService.analyze(dump.sourceName(), dump.content()))
                 .toList();
         var jfr = new JfrAnalysisService().analyze("recording.jfr", bundle.jfrRecording());
+        var allThreads = bundle.allThreads()
+                .map(dump -> dumpService.analyzeJava25(
+                        dump.sourceName(), dump.content().getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                .orElseThrow();
 
         assertThat(snapshots).hasSizeBetween(2, 5);
         assertThat(snapshots).anyMatch(AnalysisResult::hasDeadlock);
@@ -41,5 +46,7 @@ class LiveBundleVerifierTest {
         assertThat(new SnapshotTrendAnalyzer().findPersistentStalls(snapshots)).isNotEmpty();
         assertThat(jfr.samples()).anyMatch(sample ->
                 sample.eventType().equals("threadcity.lab.PressurePulse"));
+        assertThat(allThreads.snapshot().threads())
+                .anyMatch(thread -> thread.metadata().kind() == ThreadMetadata.ThreadKind.VIRTUAL);
     }
 }

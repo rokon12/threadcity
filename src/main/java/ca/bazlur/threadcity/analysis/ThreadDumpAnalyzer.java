@@ -31,12 +31,14 @@ import java.util.stream.Collectors;
 
 public final class ThreadDumpAnalyzer {
 
+    private static final int MAX_IMPACT_EVIDENCE_THREADS = 12;
+
     private final IncidentPatternDetector patternDetector = new IncidentPatternDetector();
 
     public AnalysisResult analyze(ThreadSnapshot snapshot) {
         List<WaitEdge> waitEdges = buildWaitEdges(snapshot);
         List<DeadlockCycle> deadlocks = findDeadlocks(snapshot.threads(), waitEdges);
-        List<BlockingImpact> blockingImpacts = calculateBlockingImpacts(waitEdges);
+        List<BlockingImpact> blockingImpacts = calculateBlockingImpacts(waitEdges, deadlocks);
         List<SynchronizerInsight> synchronizers = analyzeSynchronizers(snapshot, deadlocks, blockingImpacts);
         List<StackCohort> stackCohorts = findStackCohorts(snapshot.threads());
         List<MethodHotspot> methodHotspots = findMethodHotspots(snapshot.threads());
@@ -98,17 +100,69 @@ public final class ThreadDumpAnalyzer {
                 .toList();
     }
 
-    private List<BlockingImpact> calculateBlockingImpacts(List<WaitEdge> edges) {
+    private List<BlockingImpact> calculateBlockingImpacts(
+            List<WaitEdge> edges,
+            List<DeadlockCycle> deadlocks) {
         Map<Integer, JavaThread> owners = new LinkedHashMap<>();
         Map<Integer, List<JavaThread>> waitersByOwner = new LinkedHashMap<>();
+        Map<Integer, Integer> ownerByWaiter = new LinkedHashMap<>();
+        Map<Integer, JavaThread> threadsById = new LinkedHashMap<>();
         edges.forEach(edge -> {
             owners.putIfAbsent(edge.owner().id(), edge.owner());
+            threadsById.putIfAbsent(edge.owner().id(), edge.owner());
+            threadsById.putIfAbsent(edge.waiter().id(), edge.waiter());
+            ownerByWaiter.put(edge.waiter().id(), edge.owner().id());
             waitersByOwner.computeIfAbsent(edge.owner().id(), ignored -> new ArrayList<>())
                     .add(edge.waiter());
         });
 
+        Set<Integer> cycleThreadIds = deadlocks.stream()
+                .flatMap(cycle -> cycle.threads().stream())
+                .map(JavaThread::id)
+                .collect(Collectors.toUnmodifiableSet());
+        Map<Integer, Integer> descendantCounts = new LinkedHashMap<>();
+        Map<Integer, Integer> maximumDepths = new LinkedHashMap<>();
+        Map<Integer, Integer> remainingChildren = new LinkedHashMap<>();
+        ArrayDeque<Integer> leaves = new ArrayDeque<>();
+
+        threadsById.keySet().stream()
+                .filter(id -> !cycleThreadIds.contains(id))
+                .forEach(id -> {
+                    descendantCounts.put(id, 0);
+                    maximumDepths.put(id, 0);
+                    int children = (int) waitersByOwner.getOrDefault(id, List.of()).stream()
+                            .filter(waiter -> !cycleThreadIds.contains(waiter.id()))
+                            .count();
+                    remainingChildren.put(id, children);
+                    if (children == 0) {
+                        leaves.addLast(id);
+                    }
+                });
+
+        while (!leaves.isEmpty()) {
+            int child = leaves.removeFirst();
+            Integer parent = ownerByWaiter.get(child);
+            if (parent == null || cycleThreadIds.contains(parent)) {
+                continue;
+            }
+            descendantCounts.merge(parent, 1 + descendantCounts.get(child), Integer::sum);
+            maximumDepths.merge(parent, 1 + maximumDepths.get(child), Math::max);
+            int unprocessed = remainingChildren.merge(parent, -1, Integer::sum);
+            if (unprocessed == 0) {
+                leaves.addLast(parent);
+            }
+        }
+
+        deadlocks.forEach(cycle -> addCycleImpactStatistics(
+                cycle, waitersByOwner, descendantCounts, maximumDepths));
+
         return owners.values().stream()
-                .map(owner -> blockingImpact(owner, waitersByOwner))
+                .map(owner -> new BlockingImpact(
+                        owner,
+                        waitersByOwner.getOrDefault(owner.id(), List.of()).size(),
+                        descendantCounts.getOrDefault(owner.id(), 0),
+                        maximumDepths.getOrDefault(owner.id(), 0),
+                        affectedThreadSample(owner, waitersByOwner)))
                 .sorted(Comparator.comparingInt(BlockingImpact::transitivelyBlocked)
                         .reversed()
                         .thenComparing(Comparator.comparingInt(BlockingImpact::maximumDepth).reversed())
@@ -116,34 +170,86 @@ public final class ThreadDumpAnalyzer {
                 .toList();
     }
 
-    private BlockingImpact blockingImpact(
-            JavaThread blocker,
-            Map<Integer, List<JavaThread>> waitersByOwner) {
-        List<JavaThread> directWaiters = waitersByOwner.getOrDefault(blocker.id(), List.of());
-        List<JavaThread> affected = new ArrayList<>();
-        Set<Integer> visited = new HashSet<>();
-        visited.add(blocker.id());
-        ArrayDeque<ThreadAtDepth> work = new ArrayDeque<>();
-        directWaiters.forEach(waiter -> work.addLast(new ThreadAtDepth(waiter, 1)));
-        int maximumDepth = 0;
+    private void addCycleImpactStatistics(
+            DeadlockCycle cycle,
+            Map<Integer, List<JavaThread>> waitersByOwner,
+            Map<Integer, Integer> descendantCounts,
+            Map<Integer, Integer> maximumDepths) {
+        Map<Integer, JavaThread> cycleThreads = cycle.threads().stream()
+                .collect(Collectors.toMap(JavaThread::id, Function.identity()));
+        Map<Integer, Integer> cycleChildByOwner = cycle.edges().stream()
+                .collect(Collectors.toMap(edge -> edge.owner().id(), edge -> edge.waiter().id()));
+        List<Integer> ordered = new ArrayList<>(cycleThreads.size());
+        int current = cycle.threads().getFirst().id();
+        do {
+            ordered.add(current);
+            current = cycleChildByOwner.get(current);
+        } while (current != ordered.getFirst());
 
-        while (!work.isEmpty()) {
-            ThreadAtDepth current = work.removeFirst();
-            if (!visited.add(current.thread().id())) {
-                continue;
+        int totalAttached = 0;
+        int[] branchDepths = new int[ordered.size()];
+        for (int index = 0; index < ordered.size(); index++) {
+            int cycleThreadId = ordered.get(index);
+            for (JavaThread child : waitersByOwner.getOrDefault(cycleThreadId, List.of())) {
+                if (cycleThreads.containsKey(child.id())) {
+                    continue;
+                }
+                totalAttached += 1 + descendantCounts.getOrDefault(child.id(), 0);
+                branchDepths[index] = Math.max(
+                        branchDepths[index], 1 + maximumDepths.getOrDefault(child.id(), 0));
             }
-            affected.add(current.thread());
-            maximumDepth = Math.max(maximumDepth, current.depth());
-            waitersByOwner.getOrDefault(current.thread().id(), List.of())
-                    .forEach(waiter -> work.addLast(new ThreadAtDepth(waiter, current.depth() + 1)));
         }
 
-        return new BlockingImpact(
-                blocker,
-                directWaiters.size(),
-                affected.size(),
-                maximumDepth,
-                affected);
+        int transitiveCount = ordered.size() - 1 + totalAttached;
+        int[] cycleDepths = circularMaximumDepths(branchDepths);
+        for (int index = 0; index < ordered.size(); index++) {
+            descendantCounts.put(ordered.get(index), transitiveCount);
+            maximumDepths.put(ordered.get(index), cycleDepths[index]);
+        }
+    }
+
+    private int[] circularMaximumDepths(int[] branchDepths) {
+        int size = branchDepths.length;
+        int[] depths = new int[size];
+        ArrayDeque<Integer> maximums = new ArrayDeque<>();
+        for (int index = 0; index < size * 2; index++) {
+            int value = index + branchDepths[index % size];
+            while (!maximums.isEmpty()
+                    && maximums.getLast() + branchDepths[maximums.getLast() % size] <= value) {
+                maximums.removeLast();
+            }
+            maximums.addLast(index);
+            int windowStart = index - size + 1;
+            while (!maximums.isEmpty() && maximums.getFirst() < windowStart) {
+                maximums.removeFirst();
+            }
+            if (windowStart >= 0 && windowStart < size) {
+                int maximumIndex = maximums.getFirst();
+                depths[windowStart] = maximumIndex
+                        + branchDepths[maximumIndex % size]
+                        - windowStart;
+            }
+        }
+        return depths;
+    }
+
+    private List<JavaThread> affectedThreadSample(
+            JavaThread blocker,
+            Map<Integer, List<JavaThread>> waitersByOwner) {
+        List<JavaThread> affected = new ArrayList<>(MAX_IMPACT_EVIDENCE_THREADS);
+        Set<Integer> visited = new HashSet<>();
+        visited.add(blocker.id());
+        ArrayDeque<JavaThread> work = new ArrayDeque<>(waitersByOwner.getOrDefault(blocker.id(), List.of()));
+
+        while (!work.isEmpty() && affected.size() < MAX_IMPACT_EVIDENCE_THREADS) {
+            JavaThread current = work.removeFirst();
+            if (!visited.add(current.id())) {
+                continue;
+            }
+            affected.add(current);
+            waitersByOwner.getOrDefault(current.id(), List.of()).forEach(work::addLast);
+        }
+        return List.copyOf(affected);
     }
 
     private List<WaitEdge> buildWaitEdges(ThreadSnapshot snapshot) {
@@ -287,9 +393,6 @@ public final class ThreadDumpAnalyzer {
                     List.of()));
         }
         return findings;
-    }
-
-    private record ThreadAtDepth(JavaThread thread, int depth) {
     }
 
     private static final class SynchronizerBuilder {

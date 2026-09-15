@@ -5,11 +5,13 @@ import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public final class ThreadDumpUploadValidator {
 
     public static final int MAX_BYTES = 5 * 1024 * 1024;
     public static final int MAX_LINES = 100_000;
+    private static final Pattern CONTROL_CHARACTER = Pattern.compile("[\\p{Cntrl}]");
 
     public ValidatedUpload validate(String fileName, String contentType, byte[] bytes) {
         if (!isAcceptedType(fileName, contentType)) {
@@ -30,6 +32,23 @@ public final class ThreadDumpUploadValidator {
         rejectBinaryLookingContent(content);
         rejectTooManyLines(content);
         return new ValidatedUpload(safeSourceName(fileName), content);
+    }
+
+    public String validateUtf8Text(byte[] bytes, int maxBytes, int maxLines, String evidenceLabel) {
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException(evidenceLabel + " is empty");
+        }
+        if (bytes.length > maxBytes) {
+            throw new IllegalArgumentException(evidenceLabel + " exceeds its size limit");
+        }
+        int offset = hasUtf8Bom(bytes) ? 3 : 0;
+        String content = decodeUtf8(bytes, offset);
+        if (content.isBlank()) {
+            throw new IllegalArgumentException(evidenceLabel + " is empty");
+        }
+        rejectBinaryLookingContent(content);
+        rejectTooManyLines(content, maxLines);
+        return content;
     }
 
     private boolean isAcceptedType(String fileName, String contentType) {
@@ -80,13 +99,17 @@ public final class ThreadDumpUploadValidator {
     }
 
     private void rejectTooManyLines(String content) {
+        rejectTooManyLines(content, MAX_LINES);
+    }
+
+    private void rejectTooManyLines(String content, int maxLines) {
         int lines = 1;
         char previous = 0;
         for (int index = 0; index < content.length(); index++) {
             char character = content.charAt(index);
             if (character == '\r' || (character == '\n' && previous != '\r')) {
                 lines++;
-                if (lines > MAX_LINES) {
+                if (lines > maxLines) {
                     throw new IllegalArgumentException("The uploaded file contains too many lines");
                 }
             }
@@ -100,7 +123,7 @@ public final class ThreadDumpUploadValidator {
         }
         String normalized = fileName.replace('\\', '/');
         normalized = normalized.substring(normalized.lastIndexOf('/') + 1).strip();
-        normalized = normalized.replaceAll("[\\p{Cntrl}]", "?");
+        normalized = CONTROL_CHARACTER.matcher(normalized).replaceAll("?");
         if (normalized.isBlank()) {
             return "Uploaded thread dump";
         }

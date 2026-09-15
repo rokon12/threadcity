@@ -5,6 +5,8 @@ package ca.bazlur.threadcity.ai;
  */
 public final class AiUsageLimitException extends RuntimeException {
 
+    private static final long serialVersionUID = 1L;
+
     private final String userMessage;
 
     AiUsageLimitException(String message, String userMessage) {

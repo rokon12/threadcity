@@ -4,6 +4,10 @@
 
 ThreadCity is a Vaadin Flow incident tool that parses HotSpot thread dumps, reconstructs lock ownership and wait relationships, detects circular lock dependencies, groups repeated stack traces, and explains the result in a visual operations dashboard.
 
+![ThreadCity incident workbench showing a confirmed JVM deadlock, thread-state metrics, the lock traffic map, and the blocker leaderboard](docs/images/threadcity-workbench.png)
+
+*A confirmed circular wait in the Vaadin incident workbench, with deterministic evidence and AI actions visible.*
+
 ## Try the 30-second demo
 
 1. Open the application—there is no account or sign-in.
@@ -24,6 +28,8 @@ Both are downloadable from the application UI.
 ## Privacy and safety
 
 - Uploads are limited to one 5 MiB UTF-8 text file and processed in memory.
+- Incident bundles are bounded ZIP archives containing 2–5 validated UTF-8 snapshots, an optional Java 25
+  structured all-thread dump, and a JFR recording; entries are never extracted to the filesystem.
 - Raw upload bytes are not persisted or logged.
 - The immutable analysis remains only in the user's Vaadin session until **Clear analysis** is selected or the session ends.
 - The hosted demo makes no external AI calls and has no shared provider key. AI is opt-in for local/self-hosted copies and requires explicit confirmation before the first request for each analyzed snapshot. ThreadCity sends a bounded summary—not the raw dump—containing thread names, states, lock relationships, findings, representative top frames, the user's question, and up to five prior conversation turns to the configured provider through LangChain4j.
@@ -40,6 +46,8 @@ Both are downloadable from the application UI.
 - Deterministic cycle detection and repeated-stack clustering.
 - Interactive lock map, searchable/filterable Grid, finding navigation, stack inspector, and copyable incident summary.
 - Four-snapshot Incident Time Machine with Vaadin Slider, Progress Bar, Push-powered playback, and a real intermediate contention fixture.
+- Importable `.threadcity` incident windows with manifest-ordered snapshots, JFR correlation, and Java 25
+  platform/virtual-thread evidence from `Thread.dump_to_file -format=json`.
 - Responsive thread investigation using Grid, Grid Context Menu, and Master-Detail Layout.
 - Draggable broken-vs-fixed comparison using Split Layout and Details.
 - Optional LangChain4j copilot using OpenAI, Vaadin Message List and Message Input, cancellable token streaming over Vaadin Push, snapshot-scoped conversation memory, clickable deterministic evidence, contextual Ask AI actions, prompt-injection boundaries, explicit data disclosure, hard usage ceilings, and graceful failure isolation.
@@ -72,12 +80,11 @@ The server respects the `PORT` environment variable.
 
 ## Try the AI copilot with your own key
 
-AI is disabled by default, including on the public demo. To try the LangChain4j copilot, clone the project and opt in to OpenAI with a key from your own account. Keep the key in your local environment—never in source control or browser storage.
+AI controls remain visible but disabled until `OPENAI_API_KEY` is present. To try the LangChain4j copilot, clone the project and provide a key from your own account. Keep the key in your local environment—never in source control or browser storage.
 
 ```bash
 git clone https://github.com/rokon12/threadcity.git
 cd threadcity
-export THREADCITY_AI_PROVIDER="openai"
 export OPENAI_API_KEY="your-api-key"
 export THREADCITY_AI_MODEL="gpt-4.1-mini" # optional
 VAADIN_USAGE_STATS_ENABLED=false mvn spring-boot:run
@@ -110,9 +117,9 @@ The final container runs as a non-root user.
 ca.bazlur.threadcity
 ├── ai             optional bounded prompt and LangChain4j explanation service
 ├── analysis       deterministic wait graph, cycles, clusters, findings
-├── application    parse/analyze use cases and built-in sample access
+├── application    bounded asynchronous evidence use cases and built-in sample access
 ├── domain         immutable analysis model
-├── parser         HotSpot parser and bounded upload validation
+├── parser         HotSpot/Java 25 structured parsers and bounded upload validation
 └── ui
     ├── component  focused Vaadin workspaces: map, timeline, evidence, compare, AI
     ├── support    presentation-only formatting helpers
@@ -139,6 +146,6 @@ The competition workflow deliberately uses Vaadin components as product behavior
 - Spring Boot 4
 - Vaadin 25
 - LangChain4j 1.20 (optional, user-configured OpenAI integration)
-- JUnit 5 and AssertJ
+- JUnit 6 and AssertJ
 
 No database, authentication, commercial Vaadin component, or external graph library is required. The LLM integration is optional.

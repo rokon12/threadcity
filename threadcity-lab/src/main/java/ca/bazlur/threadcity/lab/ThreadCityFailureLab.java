@@ -38,7 +38,7 @@ public final class ThreadCityFailureLab {
         }
     }
 
-    private static Duration parseDuration(String[] arguments) {
+    static Duration parseDuration(String[] arguments) {
         if (arguments.length == 0) {
             return Duration.ofSeconds(120);
         }

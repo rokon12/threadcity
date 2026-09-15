@@ -5,12 +5,12 @@ import ca.bazlur.threadcity.domain.DeadlockCycle;
 import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.SnapshotDiff;
 import ca.bazlur.threadcity.domain.ThreadChange;
+import ca.bazlur.threadcity.domain.ThreadIdentities;
 import ca.bazlur.threadcity.domain.WaitEdge;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -26,8 +26,8 @@ public final class SnapshotDiffAnalyzer {
     public SnapshotDiff compare(AnalysisResult before, AnalysisResult after) {
         Objects.requireNonNull(before, "before");
         Objects.requireNonNull(after, "after");
-        Map<String, JavaThread> beforeThreads = indexThreads(before.snapshot().threads());
-        Map<String, JavaThread> afterThreads = indexThreads(after.snapshot().threads());
+        Map<String, JavaThread> beforeThreads = ThreadIdentities.index(before.snapshot().threads());
+        Map<String, JavaThread> afterThreads = ThreadIdentities.index(after.snapshot().threads());
         Set<String> identities = new LinkedHashSet<>(beforeThreads.keySet());
         identities.addAll(afterThreads.keySet());
 
@@ -38,17 +38,19 @@ public final class SnapshotDiffAnalyzer {
                         .thenComparing(ThreadChange::identity))
                 .toList();
 
+        Map<Integer, String> beforeIdentities = ThreadIdentities.keysByInternalId(before.snapshot().threads());
+        Map<Integer, String> afterIdentities = ThreadIdentities.keysByInternalId(after.snapshot().threads());
         Set<String> beforeEdges = before.waitEdges().stream()
-                .map(this::edgeSignature)
+                .map(edge -> edgeSignature(edge, beforeIdentities))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Set<String> afterEdges = after.waitEdges().stream()
-                .map(this::edgeSignature)
+                .map(edge -> edgeSignature(edge, afterIdentities))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Set<String> beforeCycles = before.deadlocks().stream()
-                .map(this::cycleSignature)
+                .map(cycle -> cycleSignature(cycle, beforeIdentities))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         Set<String> afterCycles = after.deadlocks().stream()
-                .map(this::cycleSignature)
+                .map(cycle -> cycleSignature(cycle, afterIdentities))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
 
         return new SnapshotDiff(
@@ -60,21 +62,6 @@ public final class SnapshotDiffAnalyzer {
                 intersectionSize(beforeEdges, afterEdges),
                 differenceSize(afterCycles, beforeCycles),
                 differenceSize(beforeCycles, afterCycles));
-    }
-
-    private Map<String, JavaThread> indexThreads(List<JavaThread> threads) {
-        Map<String, Integer> totals = new LinkedHashMap<>();
-        threads.forEach(thread -> totals.merge(thread.name(), 1, Integer::sum));
-        Map<String, Integer> occurrences = new LinkedHashMap<>();
-        Map<String, JavaThread> indexed = new LinkedHashMap<>();
-        threads.forEach(thread -> {
-            int occurrence = occurrences.merge(thread.name(), 1, Integer::sum);
-            String identity = totals.get(thread.name()) == 1
-                    ? thread.name()
-                    : thread.name() + " [" + occurrence + "]";
-            indexed.put(identity, thread);
-        });
-        return indexed;
     }
 
     private ThreadChange compareThread(String identity, JavaThread before, JavaThread after) {
@@ -97,7 +84,8 @@ public final class SnapshotDiffAnalyzer {
                 kinds.add(ThreadChange.Kind.UNCHANGED);
             }
         }
-        return new ThreadChange(identity, before, after, kinds);
+        JavaThread displayThread = after == null ? before : after;
+        return new ThreadChange(ThreadIdentities.displayKey(identity, displayThread), before, after, kinds);
     }
 
     private String waitSignature(JavaThread thread) {
@@ -107,12 +95,16 @@ public final class SnapshotDiffAnalyzer {
         return thread.waitKind() + "@" + thread.waitingOn().id();
     }
 
-    private String edgeSignature(WaitEdge edge) {
-        return edge.waiter().name() + "->" + edge.owner().name() + "@" + edge.lock().id();
+    private String edgeSignature(WaitEdge edge, Map<Integer, String> identities) {
+        return identities.get(edge.waiter().id()) + "->" + identities.get(edge.owner().id())
+                + "@" + edge.lock().id();
     }
 
-    private String cycleSignature(DeadlockCycle cycle) {
-        return cycle.threads().stream().map(JavaThread::name).sorted().collect(Collectors.joining("|"));
+    private String cycleSignature(DeadlockCycle cycle, Map<Integer, String> identities) {
+        return cycle.threads().stream()
+                .map(thread -> identities.get(thread.id()))
+                .sorted()
+                .collect(Collectors.joining("|"));
     }
 
     private int differenceSize(Set<String> left, Set<String> right) {

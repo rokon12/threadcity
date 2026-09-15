@@ -26,13 +26,13 @@ import java.util.stream.Collectors;
  */
 public final class SynchronizerObservatory extends Div {
 
-    private final Consumer<String> inspectThread;
+    private final Consumer<JavaThread> inspectThread;
     private final Consumer<String> highlightLock;
     private final MasterDetailLayout workbench = new MasterDetailLayout();
     private final Grid<SynchronizerInsight> grid = new Grid<>();
     private final Span summary = new Span("No snapshot loaded");
 
-    public SynchronizerObservatory(Consumer<String> inspectThread, Consumer<String> highlightLock) {
+    public SynchronizerObservatory(Consumer<JavaThread> inspectThread, Consumer<String> highlightLock) {
         this.inspectThread = inspectThread;
         this.highlightLock = highlightLock;
         configureGrid();
@@ -146,7 +146,7 @@ public final class SynchronizerObservatory extends Div {
             content.add(new Span("None recorded"));
         } else {
             threads.forEach(thread -> {
-                Button inspect = new Button(thread.name(), event -> inspectThread.accept(thread.name()));
+                Button inspect = new Button(thread.name(), event -> inspectThread.accept(thread));
                 inspect.addThemeVariants(ButtonVariant.LUMO_TERTIARY_INLINE);
                 Span state = new Span(thread.state().name());
                 Div row = new Div(inspect, state);

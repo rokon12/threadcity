@@ -4,6 +4,7 @@ import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.JavaThread;
 import ca.bazlur.threadcity.domain.ThreadState;
 import ca.bazlur.threadcity.domain.ThreadMetadata;
+import ca.bazlur.threadcity.domain.ThreadIdentities;
 import ca.bazlur.threadcity.ui.support.IncidentNarrative;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
@@ -93,15 +94,23 @@ public final class ThreadEvidencePanel extends Div {
         if (result == null) {
             return;
         }
-        result.snapshot().threads().stream()
-                .filter(thread -> thread.name().equals(threadName))
-                .findFirst()
-                .ifPresent(thread -> {
-                    focusedThreadIds = Set.of();
-                    resetFilterControls();
-                    updateGridItems();
-                    select(thread);
-                });
+        ThreadIdentities.uniquelyNamed(threadName, result.snapshot().threads())
+                .ifPresentOrElse(this::selectFromNavigation, () -> focusThreads(Set.of(threadName)));
+    }
+
+    public void inspectThread(JavaThread reference) {
+        if (result == null) {
+            return;
+        }
+        ThreadIdentities.match(reference, result.snapshot().threads())
+                .ifPresentOrElse(this::selectFromNavigation, () -> focusThreads(Set.of(reference.name())));
+    }
+
+    private void selectFromNavigation(JavaThread thread) {
+        focusedThreadIds = Set.of();
+        resetFilterControls();
+        updateGridItems();
+        select(thread);
     }
 
     public void focusThreads(Collection<String> threadNames) {
@@ -177,7 +186,7 @@ public final class ThreadEvidencePanel extends Div {
                 workbench.setDetail(stackPanel);
                 workbench.getElement().callJsFunction("scrollIntoView", true);
             }
-            askSelectedThread.setEnabled(selected != null);
+            askSelectedThread.setEnabled(selected != null && askAi != null);
         });
 
         GridContextMenu<JavaThread> contextMenu = grid.addContextMenu();
@@ -193,9 +202,12 @@ public final class ThreadEvidencePanel extends Div {
             getElement().executeJs("navigator.clipboard.writeText($0)", identity);
             successNotifier.accept("JVM thread identity copied");
         }));
-        if (askAi != null) {
-            contextMenu.addItem("✦ Ask AI about this thread", event -> event.getItem().ifPresent(askAi));
-        }
+        var askAiItem = contextMenu.addItem("✦ Ask AI about this thread", event -> {
+            if (askAi != null) {
+                event.getItem().ifPresent(askAi);
+            }
+        });
+        askAiItem.setEnabled(askAi != null);
     }
 
     private void buildLayout() {
@@ -228,7 +240,8 @@ public final class ThreadEvidencePanel extends Div {
         });
         askSelectedThread.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         askSelectedThread.setEnabled(false);
-        askSelectedThread.setVisible(askAi != null);
+        askSelectedThread.getElement().setAttribute(
+                "title", askAi == null ? "Set OPENAI_API_KEY to enable the AI copilot" : "Ask about this thread");
         Button closeInspector = new Button("Close inspector", VaadinIcon.CLOSE_SMALL.create(), event -> {
             workbench.setDetail(null);
             grid.deselectAll();

@@ -113,7 +113,8 @@ public final class MultiDumpComparisonPanel extends Div {
         Upload component = new Upload(handler);
         component.setMaxFiles(MAX_SNAPSHOTS);
         component.setMaxFileSize(ThreadDumpUploadValidator.MAX_BYTES);
-        component.setAcceptedFileTypes(".txt", ".log", "text/plain");
+        component.setAcceptedFileExtensions(".txt", ".log");
+        component.setAcceptedMimeTypes("text/plain");
         component.setDropLabel(new Span("Drop 2–5 chronological dumps"));
         Button uploadButton = new Button("Add thread dumps", VaadinIcon.UPLOAD.create());
         uploadButton.addThemeVariants(ButtonVariant.LUMO_PRIMARY);

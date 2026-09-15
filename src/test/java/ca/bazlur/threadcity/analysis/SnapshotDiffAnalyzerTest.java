@@ -76,9 +76,9 @@ class SnapshotDiffAnalyzerTest {
                 """
         );
         AnalysisResult after = analyze("after", """
-                "worker" #3
+                "worker" #1
                    java.lang.Thread.State: RUNNABLE
-                "worker" #4
+                "worker" #2
                    java.lang.Thread.State: BLOCKED
                 """
         );
@@ -86,9 +86,9 @@ class SnapshotDiffAnalyzerTest {
         SnapshotDiff diff = diffAnalyzer.compare(before, after);
 
         assertThat(diff.threadChanges()).extracting(ThreadChange::identity)
-                .containsExactly("worker [2]", "worker [1]");
+                .containsExactly("worker · Java #2", "worker · Java #1");
         assertThat(diff.threadChanges()).filteredOn(ThreadChange::changed).singleElement()
-                .satisfies(change -> assertThat(change.identity()).isEqualTo("worker [2]"));
+                .satisfies(change -> assertThat(change.identity()).isEqualTo("worker · Java #2"));
     }
 
     private AnalysisResult analyze(String name, String dump) {

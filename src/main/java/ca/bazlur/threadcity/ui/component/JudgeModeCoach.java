@@ -12,6 +12,7 @@ import com.vaadin.flow.component.icon.VaadinIcon;
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
 import com.vaadin.flow.component.progressbar.ProgressBar;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntConsumer;
@@ -171,7 +172,7 @@ public final class JudgeModeCoach extends Div {
                 int requested = step;
                 ui.access(() -> showStep(requested));
                 try {
-                    Thread.sleep(2_200);
+                    Thread.sleep(Duration.ofMillis(2_200));
                 } catch (InterruptedException exception) {
                     Thread.currentThread().interrupt();
                     return;

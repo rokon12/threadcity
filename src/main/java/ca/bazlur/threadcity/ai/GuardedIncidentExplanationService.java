@@ -34,8 +34,11 @@ final class GuardedIncidentExplanationService implements IncidentExplanationServ
             AnalysisResult result,
             List<IncidentConversationTurn> conversation,
             String question) {
-        try (AiUsageGuard.Permit ignored = usageGuard.acquire()) {
+        AiUsageGuard.Permit permit = usageGuard.acquire();
+        try {
             return delegate.explain(result, conversation, question);
+        } finally {
+            permit.close();
         }
     }
 

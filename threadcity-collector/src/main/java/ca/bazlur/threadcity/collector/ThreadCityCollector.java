@@ -32,6 +32,7 @@ public final class ThreadCityCollector {
     private static final int MIN_SNAPSHOTS = 2;
     private static final int MAX_SNAPSHOTS = 5;
     private static final int MAX_COMMAND_OUTPUT_BYTES = 8 * 1024 * 1024;
+    private static final int MAX_ALL_THREADS_BYTES = 16 * 1024 * 1024;
     private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(30);
 
     private ThreadCityCollector() {
@@ -66,6 +67,7 @@ public final class ThreadCityCollector {
         Path workspace = Files.createTempDirectory("threadcity-capture-");
         String recordingName = "threadcity-" + options.pid() + "-" + Long.toUnsignedString(System.nanoTime());
         Path recording = workspace.resolve("recording.jfr");
+        Path allThreads = workspace.resolve("all-threads.json");
         boolean recordingStarted = false;
         List<CapturedDump> dumps = new ArrayList<>();
         Instant captureStarted = Instant.now();
@@ -87,8 +89,18 @@ public final class ThreadCityCollector {
                 System.out.println("  snapshot " + (index + 1) + "/" + options.snapshots()
                         + " captured at " + DateTimeFormatter.ISO_INSTANT.format(capturedAt));
                 if (index + 1 < options.snapshots()) {
-                    Thread.sleep(intervalMillis);
+                    Thread.sleep(Duration.ofMillis(intervalMillis));
                 }
+            }
+
+            Instant allThreadsCaptured = Instant.now();
+            command(jcmd, options.pid(), "Thread.dump_to_file",
+                    "-format=json", allThreads.toAbsolutePath().toString());
+            if (!Files.isRegularFile(allThreads) || Files.size(allThreads) == 0) {
+                throw new IOException("jcmd did not create a readable Java 25 all-thread dump");
+            }
+            if (Files.size(allThreads) > MAX_ALL_THREADS_BYTES) {
+                throw new IOException("The Java 25 all-thread dump exceeded the 16 MiB bundle limit");
             }
 
             command(jcmd, options.pid(), "JFR.dump",
@@ -96,7 +108,8 @@ public final class ThreadCityCollector {
             if (!Files.isRegularFile(recording) || Files.size(recording) == 0) {
                 throw new IOException("jcmd did not create a readable JFR recording");
             }
-            writeBundle(output, options, captureStarted, Instant.now(), dumps, recording);
+            writeBundle(
+                    output, options, captureStarted, Instant.now(), dumps, allThreadsCaptured, allThreads, recording);
             return output;
         } finally {
             if (recordingStarted) {
@@ -119,6 +132,8 @@ public final class ThreadCityCollector {
             Instant started,
             Instant completed,
             List<CapturedDump> dumps,
+            Instant allThreadsCaptured,
+            Path allThreads,
             Path recording) throws IOException {
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(
                 output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))) {
@@ -129,6 +144,8 @@ public final class ThreadCityCollector {
             manifest.setProperty("capture.completed", DateTimeFormatter.ISO_INSTANT.format(completed));
             manifest.setProperty("capture.duration.seconds", Integer.toString(options.durationSeconds()));
             manifest.setProperty("snapshot.count", Integer.toString(dumps.size()));
+            manifest.setProperty("all-threads.file", "all-threads.json");
+            manifest.setProperty("all-threads.captured", DateTimeFormatter.ISO_INSTANT.format(allThreadsCaptured));
             for (int index = 0; index < dumps.size(); index++) {
                 CapturedDump dump = dumps.get(index);
                 manifest.setProperty("snapshot.%d.file".formatted(index + 1), dump.fileName());
@@ -141,6 +158,9 @@ public final class ThreadCityCollector {
             for (CapturedDump dump : dumps) {
                 add(zip, dump.fileName(), dump.content().getBytes(StandardCharsets.UTF_8));
             }
+            zip.putNextEntry(new ZipEntry("all-threads.json"));
+            Files.copy(allThreads, zip);
+            zip.closeEntry();
             zip.putNextEntry(new ZipEntry("recording.jfr"));
             Files.copy(recording, zip);
             zip.closeEntry();

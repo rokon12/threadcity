@@ -36,7 +36,7 @@ import java.util.stream.Collectors;
  */
 public final class StackCohortExplorer extends Div {
 
-    private final Consumer<String> inspectThread;
+    private final Consumer<JavaThread> inspectThread;
     private final TextField search = new TextField("Search cohorts");
     private final MultiSelectComboBox<ThreadState> states = new MultiSelectComboBox<>("Thread states");
     private final Checkbox repeatedOnly = new Checkbox("Repeated stacks only");
@@ -48,7 +48,7 @@ public final class StackCohortExplorer extends Div {
     private final Div methodPage = new Div();
     private AnalysisResult result;
 
-    public StackCohortExplorer(Consumer<String> inspectThread) {
+    public StackCohortExplorer(Consumer<JavaThread> inspectThread) {
         this.inspectThread = inspectThread;
         configureFilters();
         configureCohortGrid();
@@ -98,7 +98,7 @@ public final class StackCohortExplorer extends Div {
         cohortGrid.asSingleSelect().addValueChangeListener(event -> {
             CohortRow row = event.getValue();
             if (row != null && row.thread() != null) {
-                inspectThread.accept(row.thread().name());
+                inspectThread.accept(row.thread());
             }
         });
     }
@@ -113,7 +113,7 @@ public final class StackCohortExplorer extends Div {
         methodGrid.asSingleSelect().addValueChangeListener(event -> {
             MethodHotspot hotspot = event.getValue();
             if (hotspot != null) {
-                inspectThread.accept(hotspot.threads().getFirst().name());
+                inspectThread.accept(hotspot.threads().getFirst());
             }
         });
     }

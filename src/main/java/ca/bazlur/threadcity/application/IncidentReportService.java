@@ -12,9 +12,11 @@ import ca.bazlur.threadcity.ui.support.IncidentNarrative;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -22,6 +24,12 @@ import java.util.Optional;
  */
 @Service
 public final class IncidentReportService {
+
+    private final Clock clock;
+
+    public IncidentReportService(Clock clock) {
+        this.clock = clock;
+    }
 
     public byte[] create(AnalysisResult result, Optional<JfrAnalysis> jfr) {
         StringBuilder html = new StringBuilder(24_000);
@@ -59,7 +67,7 @@ public final class IncidentReportService {
                 .append("<h1>").append(escape(result.snapshot().sourceName())).append("</h1>")
                 .append("<p>").append(escape(IncidentNarrative.diagnosis(result))).append("</p>")
                 .append("<p class=\"muted\">Generated ")
-                .append(escape(DateTimeFormatter.ISO_INSTANT.format(Instant.now())))
+                .append(escape(DateTimeFormatter.ISO_INSTANT.format(Instant.now(clock))))
                 .append(" · Parser coverage ").append(result.snapshot().parserDiagnostics().coveragePercent())
                 .append("% (").append(escape(result.snapshot().parserDiagnostics().confidence().label()))
                 .append(")</p></header>");
@@ -67,10 +75,11 @@ public final class IncidentReportService {
 
     private void metrics(StringBuilder html, AnalysisResult result, Optional<JfrAnalysis> jfr) {
         long daemon = result.snapshot().threads().stream().filter(thread -> thread.metadata().daemon()).count();
+        Map<ThreadState, Long> stateCounts = result.stateCounts();
         html.append("<h2>Incident at a glance</h2><div class=\"metrics\">");
         metric(html, "Threads", result.snapshot().threads().size());
         metric(html, "Non-daemon", result.snapshot().threads().size() - daemon);
-        metric(html, "Blocked", result.stateCounts().get(ThreadState.BLOCKED));
+        metric(html, "Blocked", stateCounts.get(ThreadState.BLOCKED));
         metric(html, "Wait edges", result.waitEdges().size());
         metric(html, "Deadlocks", result.deadlocks().size());
         metric(html, "JFR events", jfr.map(JfrAnalysis::relevantEvents).orElse(0L));

@@ -1,13 +1,16 @@
 package ca.bazlur.threadcity.ui.component;
 
 import ca.bazlur.threadcity.application.JfrAnalysisService;
+import ca.bazlur.threadcity.application.EvidenceTaskExecutor;
 import ca.bazlur.threadcity.domain.AnalysisResult;
 import ca.bazlur.threadcity.domain.JfrAnalysis;
 import ca.bazlur.threadcity.domain.JfrEventCategory;
 import ca.bazlur.threadcity.domain.JfrEventSample;
 import ca.bazlur.threadcity.domain.JfrEventSummary;
 import ca.bazlur.threadcity.domain.JavaThread;
+import ca.bazlur.threadcity.domain.ThreadIdentities;
 import com.vaadin.flow.component.Component;
+import com.vaadin.flow.component.UI;
 import com.vaadin.flow.component.button.Button;
 import com.vaadin.flow.component.button.ButtonVariant;
 import com.vaadin.flow.component.grid.Grid;
@@ -29,6 +32,8 @@ import com.vaadin.flow.data.renderer.ComponentRenderer;
 import com.vaadin.flow.data.value.ValueChangeMode;
 import com.vaadin.flow.server.streams.InMemoryUploadHandler;
 import com.vaadin.flow.server.streams.UploadMetadata;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.format.DateTimeFormatter;
@@ -37,15 +42,21 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 /**
  * Correlates bounded JFR evidence with the currently analyzed thread dump.
  */
 public final class JfrTimelinePanel extends Div {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(JfrTimelinePanel.class);
+
     private final JfrAnalysisService analysisService;
-    private final Consumer<String> inspectThread;
+    private final EvidenceTaskExecutor taskExecutor;
+    private final Consumer<JavaThread> inspectThread;
     private final Consumer<String> successNotifier;
     private final Consumer<String> errorNotifier;
     private final Upload upload;
@@ -64,13 +75,18 @@ public final class JfrTimelinePanel extends Div {
     private AnalysisResult dumpAnalysis;
     private JfrAnalysis jfrAnalysis;
     private boolean updatingScrubber;
+    private boolean controlsEnabled = true;
+    private final AtomicLong analysisGeneration = new AtomicLong();
+    private Future<?> activeAnalysis;
 
     public JfrTimelinePanel(
             JfrAnalysisService analysisService,
-            Consumer<String> inspectThread,
+            EvidenceTaskExecutor taskExecutor,
+            Consumer<JavaThread> inspectThread,
             Consumer<String> successNotifier,
             Consumer<String> errorNotifier) {
         this.analysisService = analysisService;
+        this.taskExecutor = taskExecutor;
         this.inspectThread = inspectThread;
         this.successNotifier = successNotifier;
         this.errorNotifier = errorNotifier;
@@ -80,6 +96,7 @@ public final class JfrTimelinePanel extends Div {
         configureScrubber();
         buildLayout();
         renderEmpty();
+        addDetachListener(event -> cancelAnalysis());
     }
 
     public void showResult(AnalysisResult result) {
@@ -90,40 +107,112 @@ public final class JfrTimelinePanel extends Div {
     }
 
     public void analyze(String sourceName, byte[] bytes) {
-        try {
-            jfrAnalysis = analysisService.analyze(sourceName, bytes);
-            categories.clear();
-            search.clear();
-            renderAnalysis();
-            successNotifier.accept(jfrAnalysis.relevantEvents() + " relevant JFR events analyzed");
-        } catch (IllegalArgumentException exception) {
-            errorNotifier.accept(exception.getMessage());
-        }
+        analyzeInBackground(
+                () -> analysisService.analyze(sourceName, bytes),
+                analysis -> analysis.relevantEvents() + " relevant JFR events analyzed");
+    }
+
+    public void showAnalysis(JfrAnalysis analysis) {
+        cancelAnalysis();
+        applyAnalysis(analysis);
     }
 
     public Optional<JfrAnalysis> currentAnalysis() {
         return Optional.ofNullable(jfrAnalysis);
     }
 
+    public void setControlsEnabled(boolean enabled) {
+        controlsEnabled = enabled;
+        upload.setEnabled(enabled && activeAnalysis == null);
+    }
+
     public void loadDemo() {
-        try {
-            jfrAnalysis = analysisService.analyzeDemo();
-            categories.clear();
-            search.clear();
-            renderAnalysis();
-            successNotifier.accept("Live demo JFR evidence generated in memory");
-        } catch (RuntimeException exception) {
-            errorNotifier.accept(exception.getMessage());
-        }
+        analyzeInBackground(
+                analysisService::analyzeDemo,
+                ignored -> "Live demo JFR evidence generated in memory");
     }
 
     public void clear() {
+        cancelAnalysis();
         dumpAnalysis = null;
         jfrAnalysis = null;
         upload.clearFileList();
         categories.clear();
         search.clear();
         renderEmpty();
+    }
+
+    private void analyzeInBackground(Supplier<JfrAnalysis> work, java.util.function.Function<JfrAnalysis, String> message) {
+        UI ui = UI.getCurrent();
+        long generation = analysisGeneration.incrementAndGet();
+        cancelFuture();
+        setAnalysisBusy(true);
+        Optional<Future<?>> submitted = taskExecutor.trySubmit(() -> {
+            try {
+                JfrAnalysis analysis = work.get();
+                access(ui, () -> {
+                    if (generation != analysisGeneration.get()) {
+                        return;
+                    }
+                    activeAnalysis = null;
+                    setAnalysisBusy(false);
+                    applyAnalysis(analysis);
+                    successNotifier.accept(message.apply(analysis));
+                });
+            } catch (RuntimeException exception) {
+                LOGGER.warn("JFR evidence analysis failed ({})", exception.getClass().getSimpleName(), exception);
+                access(ui, () -> {
+                    if (generation != analysisGeneration.get()) {
+                        return;
+                    }
+                    activeAnalysis = null;
+                    setAnalysisBusy(false);
+                    errorNotifier.accept(exception instanceof IllegalArgumentException
+                            ? exception.getMessage()
+                            : "ThreadCity could not analyze that JFR recording.");
+                });
+            }
+        });
+        if (submitted.isEmpty()) {
+            setAnalysisBusy(false);
+            errorNotifier.accept("Two evidence analyses are already running. Try again in a moment.");
+            return;
+        }
+        activeAnalysis = submitted.get();
+    }
+
+    private void applyAnalysis(JfrAnalysis analysis) {
+        jfrAnalysis = analysis;
+        categories.clear();
+        search.clear();
+        renderAnalysis();
+    }
+
+    private void cancelAnalysis() {
+        analysisGeneration.incrementAndGet();
+        cancelFuture();
+        setAnalysisBusy(false);
+    }
+
+    private void cancelFuture() {
+        if (activeAnalysis != null) {
+            activeAnalysis.cancel(true);
+            activeAnalysis = null;
+        }
+    }
+
+    private void setAnalysisBusy(boolean busy) {
+        upload.setEnabled(controlsEnabled && !busy);
+        scrubProgress.setIndeterminate(busy);
+        if (busy) {
+            filterSummary.setText("Analyzing bounded JFR evidence…");
+        }
+    }
+
+    private static void access(UI ui, Runnable action) {
+        if (ui != null && ui.isAttached()) {
+            ui.access(action::run);
+        }
     }
 
     private Upload createUpload() {
@@ -151,7 +240,8 @@ public final class JfrTimelinePanel extends Div {
         Upload component = new Upload(handler);
         component.setMaxFiles(1);
         component.setMaxFileSize(JfrAnalysisService.MAX_BYTES);
-        component.setAcceptedFileTypes(".jfr", "application/octet-stream");
+        component.setAcceptedFileExtensions(".jfr");
+        component.setAcceptedMimeTypes("application/octet-stream");
         component.setDropLabel(new Span("Drop a trusted .jfr recording"));
         Button button = new Button("Analyze JFR recording", VaadinIcon.UPLOAD.create());
         button.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
@@ -361,7 +451,8 @@ public final class JfrTimelinePanel extends Div {
         Paragraph thread = new Paragraph("Thread: " + (sample.threadName() == null ? "Not recorded" : sample.threadName()));
         Paragraph frame = new Paragraph("Top frame: " + (sample.topFrame() == null ? "Not recorded" : sample.topFrame()));
         Paragraph evidence = new Paragraph("Event detail: " + (sample.detail() == null ? "No additional field" : sample.detail()));
-        Button inspect = new Button("Inspect matching dump thread", event -> inspectThread.accept(sample.threadName()));
+        Button inspect = new Button("Inspect matching dump thread", event ->
+                correlatedThread(sample).ifPresent(inspectThread));
         inspect.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
         inspect.setEnabled(isCorrelated(sample));
         Button close = new Button("Close", event -> {
@@ -399,12 +490,15 @@ public final class JfrTimelinePanel extends Div {
     }
 
     private boolean isCorrelated(JfrEventSample sample) {
-        if (dumpAnalysis == null || sample.threadName() == null) {
-            return false;
+        return correlatedThread(sample).isPresent();
+    }
+
+    private Optional<JavaThread> correlatedThread(JfrEventSample sample) {
+        if (dumpAnalysis == null) {
+            return Optional.empty();
         }
-        return dumpAnalysis.snapshot().threads().stream()
-                .map(JavaThread::name)
-                .anyMatch(sample.threadName()::equals);
+        return ThreadIdentities.matchJfr(
+                sample.javaThreadId(), sample.threadName(), dumpAnalysis.snapshot().threads());
     }
 
     private Set<String> correlatedThreadNames() {

@@ -8,6 +8,7 @@ public record IncidentBundle(
         String sourceName,
         String manifest,
         List<NamedThreadDump> threadDumps,
+        NamedThreadDump allThreadsDump,
         byte[] jfrRecording) {
 
     public IncidentBundle {
@@ -27,5 +28,9 @@ public record IncidentBundle(
 
     public Optional<byte[]> recording() {
         return Optional.ofNullable(jfrRecording());
+    }
+
+    public Optional<NamedThreadDump> allThreads() {
+        return Optional.ofNullable(allThreadsDump);
     }
 }
